@@ -87,7 +87,7 @@ class Graph(object):
         return [i0, ix, i1]
 
 class SegProc(object):
-    def __init__(self, xseg, yseg, w=1.2, h=1.6, r=0.005, raw=False):
+    def __init__(self, xseg, yseg, pts=[], w=1.2, h=1.6, r=0.005, raw=False):
         if raw:
             self._xseg = xseg
             self._yseg = yseg
@@ -98,7 +98,7 @@ class SegProc(object):
             #self._yseg = self._yseg[np.logical_and(0.5<self._yseg[:,0,0], self._yseg[:,0,0]<1.0)]
             self._yseg = self.merge_y(self._yseg, dtol=7e-2, gtol=5e-2)#yseg #selg.prune(yseg)
 
-        self._xseg, self._yseg, self._joints, self._con, self._dist = self.join_xy(self._xseg, self._yseg)
+        self._xseg, self._yseg, self._joints, self._con, self._dist = self.join_xy(self._xseg, self._yseg, pts)
 
         self._seg = np.concatenate([self._xseg, self._yseg],axis=0)
         self._seg_i = 0
@@ -199,7 +199,55 @@ class SegProc(object):
         else:
             return seg[select]
 
-    def join_xy(self, xseg, yseg, dtol=5e-2):
+    def add_points(self, xseg, yseg, joints,
+            pts, tol=3e-2):
+
+        joints = list(joints)
+        xseg   = list(xseg)
+        yseg   = list(yseg)
+        indices= []
+
+        for pidx, pt in enumerate(pts):
+            nx = len(xseg)
+            ny = len(yseg)
+            jds = []
+            sds = []
+
+            for jpt in joints:
+                jds.append(np.linalg.norm(pt - jpt))
+            jdi = np.argmin(jds)
+            if jds[jdi] < tol:
+                # pre-existing point match
+                indices.append(jdi)
+                continue
+
+            for s in xseg:
+                sds.append(dist_p2s(pt, s))
+            for s in yseg:
+                sds.append(dist_p2s(pt, s))
+
+            i = np.argmin(sds)
+            d = sds[i]
+            if d > tol: # fail to match segment
+                print 'failed tolerance'
+                return False
+            if i < nx: # split x
+                x0, x1 = xseg[i]
+                xseg[i] = [x0, [pt[0], x0[1]]]
+                xseg.append([[pt[0], x0[1]], x1])
+            else: # split y
+                y0, y1 = yseg[i - nx]
+                yseg[i - nx] = [y0, [y1[0], pt[1]]]
+                yseg.append([[y1[0], pt[1]], y1])
+            joints.append(pt)
+            indices.append(len(joints) - 1)
+
+        xseg = np.asarray(xseg, dtype=np.float32)
+        yseg = np.asarray(yseg, dtype=np.float32)
+        joints = np.asarray(joints, dtype=np.float32)
+        return xseg, yseg, joints, indices
+
+    def join_xy(self, xseg, yseg, pts=[], dtol=5e-2):
 
         joints = []
 
@@ -282,6 +330,8 @@ class SegProc(object):
         #            joints.append([x,y])
 
         joints = np.asarray(joints, dtype=np.float32) # == (N_J, 2)
+        #joints = self.add_points(xseg, yseg, joints,
+        #    [[-0.37, -0.5], [0.45, -0.26]], tol=3e-2)
 
         # add segment endpoints
         d_xs = np.reshape(joints, [-1,1,2]) - np.reshape(xseg, [1,-1,2]) # == (N_J, 2*N_X, 2)
@@ -294,7 +344,10 @@ class SegProc(object):
         ysel  = np.all(d_ys > dtol, axis=0)
         j_y  = np.reshape(yseg, [-1,2])[ysel]
 
-        joints = np.concatenate([joints, j_x, j_y], axis=0)
+        joints = np.concatenate([j_x, j_y, joints], axis=0)
+        xseg, yseg, joints, pidx = self.add_points(xseg, yseg, joints, pts, tol=3e-2)
+        self._pidx = pidx
+
         n_j = len(joints)
         print 'Number of Joints : ', len(joints)
 
@@ -324,9 +377,11 @@ class SegProc(object):
         cv2.namedWindow('segments', cv2.WINDOW_NORMAL)
 
         # draw joints
-        for j in self._joints:
-            pj = tuple(self.xy2uv(j))
-            cv2.circle(self._map, pj, radius=10, color=(1.0,1.0,1.0), thickness=1)
+        n_j = len(self._joints)
+        for ji, jpt in enumerate(self._joints):
+            pj = tuple(self.xy2uv(jpt))
+            col = ((1.0,1.0,1.0) if (ji not in self._pidx) else np.random.uniform(size=3))
+            cv2.circle(self._map, pj, radius=10, color=col, thickness=1)
             #cv2.circle(self._map, pj, radius=10, color=np.random.uniform(size=3), thickness=1)
 
             cv2.imshow('segments', self._map)
@@ -372,7 +427,7 @@ class SegProc(object):
 def main():
     data_path = os.path.expanduser('~/segments.npy')
     xseg, yseg = np.load(data_path)
-    proc = SegProc(xseg, yseg)
+    proc = SegProc(xseg, yseg, pts=[[0.38,0], [-0.37,0.5]])
     proc.show()
 
 if __name__ == "__main__":
