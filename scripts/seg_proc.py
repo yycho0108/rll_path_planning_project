@@ -100,6 +100,8 @@ class SegProc(object):
 
         self._xseg, self._yseg, self._joints, self._con, self._dist = self.join_xy(self._xseg, self._yseg, pts)
 
+        self._path = self.plan(self._joints, self._con)
+
         self._seg = np.concatenate([self._xseg, self._yseg],axis=0)
         self._seg_i = 0
         self._seg_n = len(self._seg)
@@ -214,7 +216,7 @@ class SegProc(object):
             sds = []
 
             for jpt in joints:
-                jds.append(np.linalg.norm(pt - jpt))
+                jds.append(np.linalg.norm(np.subtract(pt,jpt)))
             jdi = np.argmin(jds)
             if jds[jdi] < tol:
                 # pre-existing point match
@@ -344,7 +346,13 @@ class SegProc(object):
         ysel  = np.all(d_ys > dtol, axis=0)
         j_y  = np.reshape(yseg, [-1,2])[ysel]
 
+        print np.shape(j_x)
+        print np.shape(j_y)
+        print np.shape(joints)
+
         joints = np.concatenate([j_x, j_y, joints], axis=0)
+
+        # add start / finish ( TODO : current code is not flexible)
         xseg, yseg, joints, pidx = self.add_points(xseg, yseg, joints, pts, tol=3e-2)
         self._pidx = pidx
 
@@ -370,6 +378,52 @@ class SegProc(object):
         #cv2.imshow('con', con.astype(np.float32))
 
         return xseg, yseg, joints, con, dist
+
+    def plan(self, joints, con):
+        # WARNING : call plan after join_xy(), add_points() and related calls.
+        src, dst = self._pidx
+        dist = np.full(len(joints), 9999.0,  dtype=np.float32)
+        dist[src] = 0.0
+        prv = {}
+        n_j = len(joints)
+        Q = range(n_j)
+        print dist
+
+        while len(Q) > 0:
+            i = np.argmin([dist[e] for e in Q])
+            print 'min', np.min([dist[e] for e in Q])
+            print 'armin', dist[Q[i]]
+            print i, src
+            u = Q.pop(i)
+            print '==>', src, dist[src], dist[u]
+            print 'u, i', u, i
+            p0 = joints[u]
+            for v in np.where(con[u])[0]: # works? or not?
+                p1 = joints[v]
+                alt = dist[u] + np.linalg.norm(p0 - p1, axis=-1)
+                print 'p0p1', p0, p1
+                print dist[u], alt
+                if alt < dist[v]:
+                    dist[v] = alt
+                    prv[v] = u
+
+            if u == dst:
+                print 'dist', dist[u]
+                break
+        else:
+            return [] # no valid plan found!!
+
+        u = dst
+        res = [dst]
+        print 'src-dst', src, dst
+        print prv
+        while True:
+            res.insert(0, prv[u])
+            u = prv[u]
+            if u == src:
+                break
+        print res
+        return res
 
     def show(self):
         print self._seg_n
@@ -401,6 +455,19 @@ class SegProc(object):
             if k == 27:
                 break
 
+        # draw path
+
+        for i0, i1 in zip(self._path[:-1], self._path[1:]):
+            p0 = tuple(self.xy2uv(self._joints[i0]))
+            p1 = tuple(self.xy2uv(self._joints[i1]))
+
+            cv2.line(self._map, p0, p1, color=(1.0,0.0,0.0), thickness=2)
+            #cv2.line(self._map, p0, p1, color=np.random.uniform(size=3), thickness=2)
+            cv2.imshow('segments', self._map)
+            k = cv2.waitKey(0)
+            if k == 27:
+                break
+
         ## draw segments (orig)
         #while self._seg_i < self._seg_n:
         #    #self._map.fill(0.)
@@ -427,7 +494,8 @@ class SegProc(object):
 def main():
     data_path = os.path.expanduser('~/segments.npy')
     xseg, yseg = np.load(data_path)
-    proc = SegProc(xseg, yseg, pts=[[0.38,0], [-0.37,0.5]])
+    #proc = SegProc(xseg, yseg, pts=[[0.38,0], [-0.37,0.5]])
+    proc = SegProc(xseg, yseg, pts=[[-0.37, -0.5],[0.45,-0.26]])
     proc.show()
 
 if __name__ == "__main__":
