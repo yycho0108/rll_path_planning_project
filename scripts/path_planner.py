@@ -42,9 +42,10 @@ class LocalPathPlanner(object):
             # else theta = 0
             if np.abs(delta[0]) > np.abs(delta[1]):
                 # TODO: not a super robust check
-                path_theta = np.pi/2
+                path_theta = np.pi/2 # +- np.pi/2
             else:
-                path_theta = 0.0
+                path_theta = 0.0 # 0.0 or np.pi
+
 
             success = False
 
@@ -65,24 +66,39 @@ class LocalPathPlanner(object):
                 # seq : {twiddle - rotate} - {twiddle - move}
                 tw_suc = False
                 wpts_m2 = []
-                thetas = np.linspace(pose0.theta, path_theta, num=4)[1:]
+                thetas = np.linspace(pose0.theta, path_theta, num=5)[1:] #22.5,45.67.5,90
+                pose_r = Pose2D(pose0.x, pose0.y, pose0.theta)
 
-                for i in range(100):
-                    sign = np.random.choice([-1,1], size=2, replace=True)
-                    zx0, zy0 = sign * np.random.uniform(0.005, 0.02, size=2)
-                    sign = np.random.choice([-1,1], size=2, replace=True)
-                    zx_r, zy_r = sign * np.random.uniform(0.005, 0.02, size=2) #rotate
+                # options:
+                # 0.0 -> np.pi/2
+                # 0.0 -> -np.pi/2
+                # np.pi -> np.pi/2
+                # np.pi -> -np.pi/2
 
-                    pose0_z = Pose2D(pose0.x+zx0, pose0.y+zy0, pose0.theta)
-                    print (pose0.theta + path_theta) / 2.0
-                    posem_r = Pose2D(pose0_z.x+zx_r, pose0_z.y+zy_r, (pose0.theta + path_theta)) # in-place rot
-
-                    if srv(pose0, pose0_z).valid and srv(pose0_z, posem_r).valid:
-                        wpts_m2.append( Pose2D(pose0_z.x, pose0_z.y, pose0_z.theta) )
-                        wpts_m2.append( Pose2D(posem_r.x, posem_r.y, posem_r.theta) )
-                        tw_suc = True
-                        print 'Twiddle Part Success!'
+                tw_suc = True
+                for theta_r in thetas:
+                    for i in range(100):
+                        sign = np.random.choice([-1,1], size=2, replace=True)
+                        zx, zy = sign * np.random.uniform(0.005, 0.03, size=2)
+                        posem_r = Pose2D(pose_r.x+zx, pose_r.y+zy, theta_r) # in-place rot
+                        if srv(pose_r, posem_r).valid:
+                            pose_r = posem_r
+                            wpts_m2.append( Pose2D(posem_r.x, posem_r.y, posem_r.theta) )
+                            break
+                    else:
+                        print 'failed @', theta_r
+                        tw_suc = False
+                        new_wpts.extend(wpts_m2)
                         break
+
+                #pose_r = posem_r
+
+                #if srv(pose0, pose0_z).valid and srv(pose0_z, posem_r).valid:
+                #    wpts_m2.append( Pose2D(pose0_z.x, pose0_z.y, pose0_z.theta) )
+                #    wpts_m2.append( Pose2D(posem_r.x, posem_r.y, posem_r.theta) )
+                #    tw_suc = True
+                #    print 'Twiddle Part Success!'
+                #    break
 
                 if tw_suc:
                     if srv(posem_r, pose1).valid:
