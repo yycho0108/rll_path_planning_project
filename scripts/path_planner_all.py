@@ -697,6 +697,8 @@ class LocalPathPlanner(object):
                     tw_suc = True # set to true in case rotation is not required
                     if ad1 > np.deg2rad(5.0) and ad2 > np.deg2rad(5.0): # rotation is required
                         rospy.loginfo('Attempting Twiddle')
+                        rospy.loginfo('Twiddle Source : {}'.format(p2l(pose0)))
+
                         # seq : {twiddle - rotate} - {twiddle - move}
                         tw_suc = False
 
@@ -907,7 +909,6 @@ class PathManager(object):
                 cv2.imshow('map', self._map)
                 cv2.waitKey(1)
         ## grid_mapper.save()
-
         xseg, yseg = grid_mapper._xseg, grid_mapper._yseg
         xseg = np.asarray(xseg, dtype=np.float32)
         yseg = np.asarray(yseg, dtype=np.float32)

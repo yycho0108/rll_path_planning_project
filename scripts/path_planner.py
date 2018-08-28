@@ -94,6 +94,7 @@ class LocalPathPlanner(object):
                     tw_suc = True # set to true in case rotation is not required
                     if ad1 > np.deg2rad(5.0) and ad2 > np.deg2rad(5.0): # rotation is required
                         rospy.loginfo('Attempting Twiddle')
+                        rospy.loginfo('Twiddle Source : {}'.format(p2l(pose0)))
                         # seq : {twiddle - rotate} - {twiddle - move}
                         tw_suc = False
 
@@ -292,29 +293,29 @@ class PathManager(object):
         move_srv  = rospy.ServiceProxy('move', Move)
 
         # phase 1 : mapping
-        grid_mapper = GridMapper(self._mw, self._mh, self._fw, self._fh, r=0.02)
-        if viz:
-            cv2.namedWindow('map', cv2.WINDOW_NORMAL)
-        while not (grid_mapper.done()):
-            try:
-                grid_mapper(check_srv, self._map, self._fpt)
-            except Exception as e:
-                rospy.logerr_throttle(1.0, 'Grid Mapper Failed : {}'.format(e))
-            if viz:
-                cv2.imshow('map', self._map)
-                cv2.waitKey(1)
+        # grid_mapper = GridMapper(self._mw, self._mh, self._fw, self._fh, r=0.02)
+        # if viz:
+        #     cv2.namedWindow('map', cv2.WINDOW_NORMAL)
+        # while not (grid_mapper.done()):
+        #     try:
+        #         grid_mapper(check_srv, self._map, self._fpt)
+        #     except Exception as e:
+        #         rospy.logerr_throttle(1.0, 'Grid Mapper Failed : {}'.format(e))
+        #     if viz:
+        #         cv2.imshow('map', self._map)
+        #         cv2.waitKey(1)
         ## grid_mapper.save()
 
-        xseg, yseg = grid_mapper._xseg, grid_mapper._yseg
-        xseg = np.asarray(xseg, dtype=np.float32)
-        yseg = np.asarray(yseg, dtype=np.float32)
-        if len(xseg) <= 0 or len(yseg) <= 0:
-            rospy.logerr_throttle(1.0, 'Grid Mapper Failed!')
-            return
+        #xseg, yseg = grid_mapper._xseg, grid_mapper._yseg
+        #xseg = np.asarray(xseg, dtype=np.float32)
+        #yseg = np.asarray(yseg, dtype=np.float32)
+        #if len(xseg) <= 0 or len(yseg) <= 0:
+        #    rospy.logerr_throttle(1.0, 'Grid Mapper Failed!')
+        #    return
 
         # alt 1: use cached segments, NOTE : only for testing!!
-        # data_path = os.path.expanduser('/tmp/segments.npy')
-        # xseg, yseg = np.load(data_path)
+        data_path = os.path.expanduser('/tmp/segments.npy')
+        xseg, yseg = np.load(data_path)
 
         # phase 2 : process path segments --> graph + plan
         pose0 = req.start
