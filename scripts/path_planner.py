@@ -12,6 +12,7 @@ import numpy as np
 import os
 from path_mapper import GridMapper
 from seg_proc import SegProc
+import cv2
 
 def p2l(p):
     return [p.x,p.y,p.theta]
@@ -280,22 +281,28 @@ class PathManager(object):
         move_srv  = rospy.ServiceProxy('move', Move)
 
         # phase 1 : mapping
-        # grid_mapper = GridMapper(mw, mh, fw, fh, r=0.02)
-        # while not (grid_mapper.done()):
-        #     try:
-        #         grid_mapper(check_srv, self._map, self._fpt)
-        #     except Exception as e:
-        #         rospy.logerr_throttle(1.0, 'Grid Mapper Failed : {}'.format(e))
-        # xseg, yseg = grid_mapper._xseg, grid_mapper._yseg
-        # xseg = np.asarray(xseg, dtype=np.float32)
-        # yseg = np.asarray(yseg, dtype=np.float32)
-        # if len(xseg) <= 0 or len(yseg) <= 0:
-        #     rospy.logerr_throttle(1.0, 'Grid Mapper Failed!')
-        #     return
+        grid_mapper = GridMapper(self._mw, self._mh, self._fw, self._fh, r=0.02)
+        cv2.namedWindow('map', cv2.WINDOW_NORMAL)
+        while not (grid_mapper.done()):
+            try:
+                grid_mapper(check_srv, self._map, self._fpt)
+            except Exception as e:
+                rospy.logerr_throttle(1.0, 'Grid Mapper Failed : {}'.format(e))
+            if True:
+                cv2.imshow('map', self._map)
+                cv2.waitKey(1)
+        grid_mapper.save()
+
+        xseg, yseg = grid_mapper._xseg, grid_mapper._yseg
+        xseg = np.asarray(xseg, dtype=np.float32)
+        yseg = np.asarray(yseg, dtype=np.float32)
+        if len(xseg) <= 0 or len(yseg) <= 0:
+            rospy.logerr_throttle(1.0, 'Grid Mapper Failed!')
+            return
 
         # use cached segments, NOTE : only for testing!!
-        data_path = os.path.expanduser('~/segments.npy')
-        xseg, yseg = np.load(data_path)
+        #data_path = os.path.expanduser('~/segments.npy')
+        #xseg, yseg = np.load(data_path)
 
         # phase 2 : process path segments --> graph + plan
         pose0 = req.start

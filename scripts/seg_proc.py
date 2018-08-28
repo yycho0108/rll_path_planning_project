@@ -346,10 +346,6 @@ class SegProc(object):
         ysel  = np.all(d_ys > dtol, axis=0)
         j_y  = np.reshape(yseg, [-1,2])[ysel]
 
-        print np.shape(j_x)
-        print np.shape(j_y)
-        print np.shape(joints)
-
         joints = np.concatenate([j_x, j_y, joints], axis=0)
 
         # add start / finish ( TODO : current code is not flexible)
@@ -365,7 +361,7 @@ class SegProc(object):
 
         seg = np.concatenate([xseg, yseg], axis=0)
 
-        print 'seg', len(seg)
+        print 'Number of Segments : ', len(seg)
         for p0, p1 in seg:
             print p0, p1
             src = np.argmin(np.linalg.norm(joints - np.reshape(p0, [1,2]), axis=-1))
@@ -387,36 +383,27 @@ class SegProc(object):
         prv = {}
         n_j = len(joints)
         Q = range(n_j)
-        print dist
 
         while len(Q) > 0:
             i = np.argmin([dist[e] for e in Q])
-            print 'min', np.min([dist[e] for e in Q])
-            print 'armin', dist[Q[i]]
-            print i, src
             u = Q.pop(i)
-            print '==>', src, dist[src], dist[u]
-            print 'u, i', u, i
             p0 = joints[u]
             for v in np.where(con[u])[0]: # works? or not?
                 p1 = joints[v]
                 alt = dist[u] + np.linalg.norm(p0 - p1, axis=-1)
-                print 'p0p1', p0, p1
-                print dist[u], alt
                 if alt < dist[v]:
                     dist[v] = alt
                     prv[v] = u
 
             if u == dst:
-                print 'dist', dist[u]
                 break
         else:
             return [] # no valid plan found!!
 
         u = dst
         res = [dst]
-        print 'src-dst', src, dst
-        print prv
+        print 'Src-Dist', src, dst
+        print 'Optimal Path', prv
         while True:
             res.insert(0, prv[u])
             u = prv[u]
