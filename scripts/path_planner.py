@@ -8,67 +8,252 @@ from geometry_msgs.msg import Pose2D
 from heapq import heappush, heappop # for priority queue
 import math
 
-def plan_to_goal(req):
-    """ Plan a path from Start to Goal """
-    pose_start = Pose2D()
-    pose_goal = Pose2D()
-    pose_check_start = Pose2D()
-    pose_check_goal = Pose2D()
-    pose_move = Pose2D()
+import numpy as np
+import os
+from path_mapper import GridMapper
+from seg_proc import SegProc
 
-    rospy.loginfo("Got a planning request")
-
-    pose_start = req.start
-    pose_goal = req.goal
-
-    move_srv = rospy.ServiceProxy('move', Move)
-    check_srv = rospy.ServiceProxy('check_path', CheckPath, persistent=True)
-
-    ###############################################
-    # Implement your path planning algorithm here #
-    ###############################################
-
-    # Input: map dimensions, start pose, and goal pose
-    # retrieving input values  
-    map_width = rospy.get_param('~map_width')
-    map_length = rospy.get_param('~map_length')
-    xStart, yStart, tStart = pose_start.x, pose_start.y, pose_start.theta
-    xGoal, yGoal, tGoal = pose_goal.x, pose_goal.y, pose_goal.theta
-    # printing input values
-    rospy.loginfo("map dimensions: width=%1.2fm, length=%1.2fm", map_width, map_length)
-    rospy.loginfo("start pose: x %f, y %f, theta %f", xStart, yStart, tStart)
-    rospy.loginfo("goal pose: x %f, y %f, theta %f", xGoal, yGoal, tGoal)
-
-    # Output: movement commands
-    pose_check_start.x, pose_check_start.y, pose_check_start.theta= xStart, yStart, tStart
-    pose_check_goal.x, pose_check_goal.y, pose_check_goal.theta= xGoal, yGoal, tGoal
-    resp = check_srv(pose_check_start, pose_check_goal) # checking if the arm can move to the goal pose
-    if resp.valid:
-        rospy.loginfo("Valid pose")
-        pose_move.x, pose_move.y, pose_move.theta = xGoal, yGoal, tGoal 
-        # executing a move command towards the goal pose
-        resp = move_srv(pose_move)
-    else:
-        rospy.loginfo("Invalid pose")
-        
-    ###############################################
-    # End of Algorithm #
-    ###############################################
-
-
-class PathPlanner:
+class LocalPathPlanner(object):
     def __init__(self):
+        pass
+    def __call__(self, srv, wpts, t0, t1):
+        # stitch wpts = waypoints
+        # and ensure that all intermediate paths are valid
+        pose0 = Pose2D()
+        pose1 = Pose2D()
+
+        new_wpts = [] # include rotation transitions
+
+        start = wpts[0] # immutable
+        theta = t0
+
+        for wi, wpt in enumerate(wpts[1:]):
+            pose0.x, pose0.y = start
+            pose0.theta = theta
+            delta = np.subtract(wpt, start)
+            delta_dir = np.divide(delta, np.linalg.norm(delta))
+
+            # if delta is in x direction, theta should be pi/2
+            # else theta = 0
+            if np.abs(delta[0]) > np.abs(delta[1]):
+                # TODO: not a super robust check
+                path_theta = np.pi/2
+            else:
+                path_theta = 0.0
+
+            success = False
+
+            # method 1 : if simple path is permissible
+            if not success:
+                pose1.x, pose1.y = wpt
+                pose1.theta = path_theta
+                if srv(pose0, pose1).valid:
+                    new_wpts.append( Pose2D(pose1.x,pose1.y,pose1.theta) )
+                    success = True
+                    print '[{}] : {}'.format(wi, 1)
+                    start = [pose1.x, pose1.y]
+                    theta = pose1.theta
+
+            # method 2 : handle angular transition first
+            if not success:
+                dx, dy = delta_dir * 0.01
+                posem = Pose2D(pose0.x+dx, pose1.y+dy, path_theta)
+                posem2 = Pose2D(pose0.x, pose1.y, path_theta)
+                if srv(pose0, posem).valid and srv(posem, posem2).valid\
+                        and srv(posem2, pose1).valid:
+                    new_wpts.append( Pose2D(posem.x, posem.y, posem.theta) )
+                    new_wpts.append( Pose2D(posem2.x, posem2.y, posem2.theta) )
+                    new_wpts.append( Pose2D(pose1.x, pose1.y, pose1.theta) )
+                    success = True
+                    print '[{}] : {}'.format(wi, 2)
+
+            # method 3: sample random intermediate points until valid
+            # NOTE : also samples endpoints at random offsets within +-2cm
+            if not success:
+                for i in range(100): # 100 tries [TODO : make configurable]
+                    dx, dy = delta * np.random.uniform()
+                    zxm, zym = np.random.uniform(-0.02, 0.02, size=2)
+                    zx1, zy1 = np.random.uniform(-0.02, 0.02, size=2)
+                    posem  = Pose2D(pose0.x+dx+zxm, pose1.y+dy+zym, path_theta)
+                    pose1z = Pose2D(pose1.x+zx1, pose1.y+zy1, path_theta)
+
+                    if srv(pose0, posem).valid and srv(posem, pose1z).valid:
+                        pose1 = pose1z
+                        new_wpts.append( Pose2D(posem.x, posem.y, posem.theta) )
+                        new_wpts.append( Pose2D(pose1.x, pose1.y, pose1.theta) )
+                        success = True
+                        print '[{}] : {}'.format(wi, 2)
+                        break
+
+            if not success:
+                print 'failed to compute local path! \n\t src : \n {} \n\t dst \n {}'.format(pose0, pose1)
+                print '{}/{}'.format(wi+1, len(wpts))
+                # abort
+                return []
+
+            # reset starting point
+            start = [pose1.x, pose1.y]
+            theta = pose1.theta
+
+        # handle endpoint theta
+        pose0.x, pose0.y = start
+        pose0.theta = theta
+        d_theta = ((theta - t1 + np.pi) % (2*np.pi)) - np.pi
+        if np.abs(d_theta) > np.deg2rad(5): # NOTE : somewhat arbitrary angle tolerance assignment
+            for i in range(100):
+                zx, zy = np.random.uniform(-0.02, 0.02, size=2)
+                posem = Pose2D(pose0.x+zx, pose0.y+zy, t1)
+                pose1 = Pose2D(pose0.x, pose0.y, t1)
+
+                if srv(pose0, posem).valid and srv(posem, pose1).valid:
+                    new_wpts.append( Pose2D(posem.x, posem.y, posem.theta) )
+                    new_wpts.append( Pose2D(pose1.x, pose1.y, pose1.theta) )
+                    break
+
+        # even if the final endpoint-angle handling code fails,
+        # still attempt the path to see if the result will be acceptable
+        # (i.e. the code will not return [] as in previous failure cases)
+
+        return new_wpts
+
+class PathManager(object):
+    def __init__(self):
+        # map params
+        self._mw = mw = float(rospy.get_param('~map_width', default=1.2))
+        self._mh = mh = float(rospy.get_param('~map_length', default=1.6))
+        self._mr = mr = float(rospy.get_param('~map_res', default=0.005))
+        n, m = int(np.round(mw/mr)), int(np.round((mh/mr)))
+        self._map = np.zeros(shape=(n,m), dtype=np.uint8)
+
+        # footprint params (not really used during runtime; only for testing)
+        self._fw = fw = float(rospy.get_param('~fw', default=0.06)) # footprint width
+        self._fh = fh = float(rospy.get_param('~fh', default=0.07)) # footprint height
+        fpt = [[-fw/2,-fh/2],[-fw/2,fh/2],[fw/2,fh/2],[fw/2,-fh/2]] # 4x2
+        self._fpt = np.asarray(fpt, dtype=np.float32).T #2x4
+
+        # misc params
+        self._rate = float(rospy.get_param('~rate', default=50.0))
+
+        # Flag
+        self._init_flag = False
+        self._stop_flag = False
+
+        # ROS Handle
         self.server = actionlib.SimpleActionServer("plan_to_goal", PlanToGoalAction, self.execute, False)
         self.server.start()
 
     def execute(self, req):
-        plan_to_goal(req)
+        # create service handles
+        check_srv = rospy.ServiceProxy('check_path', CheckPath, persistent=True)
+        move_srv  = rospy.ServiceProxy('move', Move)
+
+        # phase 1 : mapping
+        # grid_mapper = GridMapper(mw, mh, fw, fh, r=0.02)
+        # while not (grid_mapper._xfin and grid_mapper._yfin):
+        #     try:
+        #         grid_mapper(check_srv, self._map, self._fpt)
+        #     except Exception as e:
+        #         rospy.logerr_throttle(1.0, 'Grid Mapper Failed : {}'.format(e))
+        # xseg, yseg = grid_mapper._xseg, grid_mapper._yseg
+        # xseg = np.asarray(xseg, dtype=np.float32)
+        # yseg = np.asarray(yseg, dtype=np.float32)
+        # if len(xseg) <= 0 or len(yseg) <= 0:
+        #     rospy.logerr_throttle(1.0, 'Grid Mapper Failed!')
+        #     return
+
+        # use cached segments, only for testing!!
+        data_path = os.path.expanduser('~/segments.npy')
+        xseg, yseg = np.load(data_path)
+
+        # phase 2 : process path segments --> graph + plan
+        pose0 = req.start
+        pose1 = req.goal
+        t0,t1 = pose0.theta, pose1.theta
+        extra_pts = [[pose0.x, pose0.y], [pose1.x, pose1.y]]
+        extra_pts = np.asarray(extra_pts, dtype=np.float32)
+        proc = SegProc(xseg, yseg, pts=extra_pts)
+        path = np.copy(proc._path)
+        if len(path) <= 0:
+            rospy.logerr_throttle(1.0, 'Global Planner Failed!')
+            return
+
+        #print 'Validate Initial Points : ', path[0], req.start
+
+        # phase 3 : construct executable local paths from global path
+        local_planner = LocalPathPlanner()
+        full_path = local_planner(check_srv, path, t0, t1)
+        if len(full_path) <= 0:
+            rospy.logerr_throttle(1.0, 'Local Planner Failed!')
+            return
+
+        # phase 4 : move
+        for wpt in full_path:
+            move_srv(wpt)
+
         self.server.set_succeeded()
 
 
+#def plan_to_goal(req):
+#    """ Plan a path from Start to Goal """
+#    pose_start = Pose2D()
+#    pose_goal = Pose2D()
+#    pose_check_start = Pose2D()
+#    pose_check_goal = Pose2D()
+#    pose_move = Pose2D()
+#
+#    rospy.loginfo("Got a planning request")
+#
+#    pose_start = req.start
+#    pose_goal = req.goal
+#
+#    move_srv = rospy.ServiceProxy('move', Move)
+#    check_srv = rospy.ServiceProxy('check_path', CheckPath, persistent=True)
+#
+#    ###############################################
+#    # Implement your path planning algorithm here #
+#    ###############################################
+#
+#    # Input: map dimensions, start pose, and goal pose
+#    # retrieving input values  
+#    map_width = rospy.get_param('~map_width')
+#    map_length = rospy.get_param('~map_length')
+#    xStart, yStart, tStart = pose_start.x, pose_start.y, pose_start.theta
+#    xGoal, yGoal, tGoal = pose_goal.x, pose_goal.y, pose_goal.theta
+#    # printing input values
+#    rospy.loginfo("map dimensions: width=%1.2fm, length=%1.2fm", map_width, map_length)
+#    rospy.loginfo("start pose: x %f, y %f, theta %f", xStart, yStart, tStart)
+#    rospy.loginfo("goal pose: x %f, y %f, theta %f", xGoal, yGoal, tGoal)
+#
+#    # Output: movement commands
+#    pose_check_start.x, pose_check_start.y, pose_check_start.theta= xStart, yStart, tStart
+#    pose_check_goal.x, pose_check_goal.y, pose_check_goal.theta= xGoal, yGoal, tGoal
+#    resp = check_srv(pose_check_start, pose_check_goal) # checking if the arm can move to the goal pose
+#    if resp.valid:
+#        rospy.loginfo("Valid pose")
+#        pose_move.x, pose_move.y, pose_move.theta = xGoal, yGoal, tGoal 
+#        # executing a move command towards the goal pose
+#        resp = move_srv(pose_move)
+#    else:
+#        rospy.loginfo("Invalid pose")
+#        
+#    ###############################################
+#    # End of Algorithm #
+#    ###############################################
+#
+#
+#class PathPlanner:
+#    def __init__(self):
+#        self.server = actionlib.SimpleActionServer("plan_to_goal", PlanToGoalAction, self.execute, False)
+#        self.server.start()
+#
+#    def execute(self, req):
+#        plan_to_goal(req)
+#        self.server.set_succeeded()
+#
+#
+
 if __name__ == '__main__':
     rospy.init_node('path_planner')
-
-    server = PathPlanner()
-
+    #server = PathPlanner()
+    server = PathManager()
     rospy.spin()

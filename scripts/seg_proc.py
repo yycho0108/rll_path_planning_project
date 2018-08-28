@@ -422,8 +422,7 @@ class SegProc(object):
             u = prv[u]
             if u == src:
                 break
-        print res
-        return res
+        return [joints[i] for i in res]
 
     def show(self):
         print self._seg_n
@@ -457,9 +456,9 @@ class SegProc(object):
 
         # draw path
 
-        for i0, i1 in zip(self._path[:-1], self._path[1:]):
-            p0 = tuple(self.xy2uv(self._joints[i0]))
-            p1 = tuple(self.xy2uv(self._joints[i1]))
+        for p0, p1 in zip(self._path[:-1], self._path[1:]):
+            p0 = tuple(self.xy2uv(p0))
+            p1 = tuple(self.xy2uv(p1))
 
             cv2.line(self._map, p0, p1, color=(1.0,0.0,0.0), thickness=2)
             #cv2.line(self._map, p0, p1, color=np.random.uniform(size=3), thickness=2)

@@ -81,7 +81,7 @@ def monte_carlo_checker(srv, map, fpt, w, h, a=0):
             print trace, trace.shape
             cv2.drawContours(map, [trace.T], 0, color=255, thickness=-1)
 
-class GridChecker(object):
+class GridMapper(object):
     def __init__(self, w, h, fw, fh, r=0.02):
         self._w = w
         self._h = h
@@ -173,7 +173,7 @@ class GridChecker(object):
 #    fpt = [[-fw/2,-fh/2],[-fw/2,fh/2],[fw/2,fh/2],[fw/2,-fh/2]] # 4x2
 #    fpt = np.asarray(fpt, dtype=np.float32).T #2x4
 #
-#    grid_checker = GridChecker(map_width, map_length)
+#    grid_checker = GridMapper(map_width, map_length)
 #
 #    # begin cycle
 #    def step_cb(_):
@@ -238,7 +238,7 @@ def plan_to_goal(req):
     else:
         rospy.loginfo("Invalid pose")
 
-class PathChecker:
+class PathMapper:
     def __init__(self):
         # map params
         self._mw = mw = float(rospy.get_param('~map_width', default=1.2))
@@ -261,7 +261,7 @@ class PathChecker:
         self._stop_flag = False
 
         # grid checker handle
-        self._grid_checker = GridChecker(mw, mh, fw, fh, r=0.02)
+        self._grid_checker = GridMapper(mw, mh, fw, fh, r=0.02)
 
         # Provide Services
         self._step = rospy.Service('step', Empty, self.step_cb)
@@ -280,8 +280,8 @@ class PathChecker:
             #        self._map,self._fpt,
             #        self._mw, self._mh, a=0)#np.pi/2)
         except Exception as e:
-            #rospy.logerr_throttle(1.0, 'Monte Carlo Checker Failed : {}'.format(e))
-            rospy.logerr_throttle(1.0, 'Grid Checker Failed : {}'.format(e))
+            #rospy.logerr_throttle(1.0, 'Monte Carlo Mapper Failed : {}'.format(e))
+            rospy.logerr_throttle(1.0, 'Grid Mapper Failed : {}'.format(e))
         return EmptyResponse()
 
     def stop_cb(self, _):
@@ -312,5 +312,5 @@ class PathChecker:
 
 if __name__ == '__main__':
     rospy.init_node('path_planner')
-    server = PathChecker()
+    server = PathMapper()
     rospy.spin()
