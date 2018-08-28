@@ -16,6 +16,16 @@ from seg_proc import SegProc
 def p2l(p):
     return [p.x,p.y,p.theta]
 
+def angspace(a0, a1, num=5):
+    if np.abs(a1 - a0) > np.pi:
+        a1 += 2*np.pi*np.sign(a0-a1)
+    # angular linspace, shortest path
+    res = np.linspace(a0, a1, num=num)
+    return ((res + np.pi) % (2*np.pi)) - np.pi
+
+def angnorm(x):
+    return (x + np.pi) % (2 * np.pi) - np.pi
+
 class LocalPathPlanner(object):
     def __init__(self):
         pass
@@ -60,36 +70,75 @@ class LocalPathPlanner(object):
                     start = [pose1.x, pose1.y]
                     theta = pose1.theta
 
+            # method 1, but try again 180'
+            if not success:
+                path_theta = angnorm(path_theta + np.pi)
+                pose1.theta = angnorm(path_theta)
+                if srv(pose0, pose1).valid:
+                    new_wpts.append( Pose2D(pose1.x,pose1.y,pose1.theta) )
+                    success = True
+                    print '[{}] : {} ; {} -> {}'.format(wi, 1, p2l(pose0), p2l(pose1))
+                    start = [pose1.x, pose1.y]
+                    theta = pose1.theta
+
             # method 2 : handle rotation first
             if not success:
-                rospy.loginfo('Attempting Twiddle')
-                # seq : {twiddle - rotate} - {twiddle - move}
-                tw_suc = False
-                wpts_m2 = []
-                thetas = np.linspace(pose0.theta, path_theta, num=5)[1:] #22.5,45.67.5,90
-                pose_r = Pose2D(pose0.x, pose0.y, pose0.theta)
+                ad1 = np.abs(angnorm(pose0.theta - path_theta))
+                ad2 = np.abs(angnorm(pose0.theta - (path_theta + np.pi)))
+                if ad1 > np.deg2rad(5.0) and ad2 > np.deg2rad(5.0): # rotation is required
+                    rospy.loginfo('Attempting Twiddle')
+                    # seq : {twiddle - rotate} - {twiddle - move}
+                    tw_suc = False
 
-                # options:
-                # 0.0 -> np.pi/2
-                # 0.0 -> -np.pi/2
-                # np.pi -> np.pi/2
-                # np.pi -> -np.pi/2
+                    # options:
+                    # 0.0 -> np.pi/2
+                    # 0.0 -> -np.pi/2
+                    # np.pi -> np.pi/2
+                    # np.pi -> -np.pi/2
 
-                tw_suc = True
-                for theta_r in thetas:
-                    for i in range(100):
-                        sign = np.random.choice([-1,1], size=2, replace=True)
-                        zx, zy = sign * np.random.uniform(0.005, 0.03, size=2)
-                        posem_r = Pose2D(pose_r.x+zx, pose_r.y+zy, theta_r) # in-place rot
-                        if srv(pose_r, posem_r).valid:
-                            pose_r = posem_r
-                            wpts_m2.append( Pose2D(posem_r.x, posem_r.y, posem_r.theta) )
-                            break
-                    else:
-                        print 'failed @', theta_r
-                        tw_suc = False
-                        new_wpts.extend(wpts_m2)
-                        break
+                    if not tw_suc:
+                        tw_suc = True
+                        wpts_m2 = []
+                        thetas = angspace(pose0.theta, path_theta, num=5)[1:] #22.5,45.67.5,90
+                        pose_r = Pose2D(pose0.x, pose0.y, pose0.theta)
+
+                        for theta_r in thetas:
+                            for i in range(100):
+                                sign = np.random.choice([-1,1], size=2, replace=True)
+                                zx, zy = sign * np.random.uniform(0.005, 0.03, size=2)
+                                posem_r = Pose2D(pose_r.x+zx, pose_r.y+zy, theta_r) # in-place rot
+                                if srv(pose_r, posem_r).valid:
+                                    pose_r = posem_r
+                                    wpts_m2.append( Pose2D(posem_r.x, posem_r.y, posem_r.theta) )
+                                    break
+                            else:
+                                tw_suc = False
+                                break
+
+                    if not tw_suc:
+                        path_theta = (path_theta + 2 * np.pi) % (2 * np.pi) - np.pi
+                        tw_suc = True
+                        wpts_m2 = []
+                        thetas = angspace(pose0.theta, path_theta, num=5)[1:] #22.5,45.67.5,90
+                        pose_r = Pose2D(pose0.x, pose0.y, pose0.theta)
+
+                        for theta_r in thetas:
+                            for i in range(100):
+                                sign = np.random.choice([-1,1], size=2, replace=True)
+                                zx, zy = sign * np.random.uniform(0.005, 0.03, size=2)
+                                posem_r = Pose2D(pose_r.x+zx, pose_r.y+zy, theta_r) # in-place rot
+                                if srv(pose_r, posem_r).valid:
+                                    pose_r = posem_r
+                                    wpts_m2.append( Pose2D(posem_r.x, posem_r.y, posem_r.theta) )
+                                    break
+                            else:
+                                tw_suc = False
+                                break
+
+                    print 'tw_suc', tw_suc
+                else:
+                    # rotation is not required
+                    posem_r = pose0
 
                 #pose_r = posem_r
 
@@ -101,20 +150,32 @@ class LocalPathPlanner(object):
                 #    break
 
                 if tw_suc:
+                    pose1.theta = path_theta
+
                     if srv(posem_r, pose1).valid:
-                        wpts_m2.append( Pose2D(pose1.x, pose1.y, pose1.theta) )
+                        wpts_m2.append( Pose2D(pose1.x, pose1.y, path_theta) )
                         new_wpts.extend(wpts_m2)
                         success = True
                     else:
                         for i in range(100):
-                            zx1, zy1 = np.random.uniform(-0.02, 0.02, size=2)
+                            #sign = np.random.choice([-1,1], size=2, replace=True)
+                            #zx0, zy0 = sign * np.random.uniform(0.005, 0.03, size=2)
+                            #posem_t = Pose2D(posem_r.x+zx0, posem_r.y+zx0, path_theta)
+                            #if not srv(posem_r, posem_t).valid:
+                            #    continue
+
+                            sign = np.random.choice([-1,1], size=2, replace=True)
+                            zx1, zy1 = sign * np.random.uniform(0.005, 0.03, size=2)
                             pose1_z = Pose2D(pose1.x+zx1, pose1.y+zy1, path_theta)
 
                             if srv(posem_r, pose1_z).valid:
                                 pose1 = pose1_z
-                                wpts_m2.append( Pose2D(pose1.x, pose1.y, pose1.theta) )
+                                wpts_m2.append( Pose2D(pose1.x, pose1.y, path_theta) )
                                 new_wpts.extend(wpts_m2)
                                 success = True
+                                break
+                    #if not success:
+                    #    new_wpts.extend(wpts_m2) # debugging
 
                 # seq : static_twiddle - rotate - move
                 #dx, dy = delta_dir * 0.01
@@ -130,27 +191,29 @@ class LocalPathPlanner(object):
 
             # method 3: sample random intermediate points until valid
             # NOTE : also samples endpoints at random offsets within +-2cm
-            if not success:
-                rospy.loginfo('Attempting Random Intermediate Points')
-                for i in range(100): # 100 tries [TODO : make configurable]
-                    dx, dy = delta * np.random.uniform()
-                    zxm, zym = np.random.uniform(-0.02, 0.02, size=2)
-                    zx1, zy1 = np.random.uniform(-0.02, 0.02, size=2)
-                    posem  = Pose2D(pose0.x+dx+zxm, pose1.y+dy+zym, path_theta)
-                    pose1z = Pose2D(pose1.x+zx1, pose1.y+zy1, path_theta)
 
-                    if srv(pose0, posem).valid and srv(posem, pose1z).valid:
-                        pose1 = pose1z
-                        new_wpts.append( Pose2D(posem.x, posem.y, posem.theta) )
-                        new_wpts.append( Pose2D(pose1.x, pose1.y, pose1.theta) )
-                        success = True
-                        print '[{}] : {} ; {} -> {} -> {}'.format(wi, 3, p2l(pose0), p2l(posem), p2l(pose1))
-                        break
+            #if not success:
+            #    rospy.loginfo('Attempting Random Intermediate Points')
+            #    for i in range(100): # 100 tries [TODO : make configurable]
+            #        dx, dy = delta * np.random.uniform()
+            #        zxm, zym = np.random.uniform(-0.02, 0.02, size=2)
+            #        zx1, zy1 = np.random.uniform(-0.02, 0.02, size=2)
+            #        posem  = Pose2D(pose0.x+dx+zxm, pose1.y+dy+zym, path_theta)
+            #        pose1z = Pose2D(pose1.x+zx1, pose1.y+zy1, path_theta)
+
+            #        if srv(pose0, posem).valid and srv(posem, pose1z).valid:
+            #            pose1 = pose1z
+            #            new_wpts.append( Pose2D(posem.x, posem.y, posem.theta) )
+            #            new_wpts.append( Pose2D(pose1.x, pose1.y, pose1.theta) )
+            #            success = True
+            #            print '[{}] : {} ; {} -> {} -> {}'.format(wi, 3, p2l(pose0), p2l(posem), p2l(pose1))
+            #            break
 
             if not success:
                 print 'failed to compute local path! \n\t src : \n {} \n\t dst \n {}'.format(pose0, pose1)
                 print '{}/{}'.format(wi, len(wpts))
                 # abort
+                print new_wpts
                 return new_wpts
 
             # reset starting point
@@ -249,7 +312,10 @@ class PathManager(object):
             return
 
         # phase 4 : move
-        for wpt in full_path:
+        for wi, wpt in enumerate(full_path):
+            print 'wpt', p2l(wpt)
+            if wi>0:
+                print 'validity : ', check_srv(full_path[wi-1], wpt)
             move_srv(wpt)
 
         self.server.set_succeeded()
