@@ -103,7 +103,7 @@ class GridMapper(object):
         self._xseg = []
         self._yseg = []
 
-    def __call__(self, srv, map, fpt):
+    def __call__(self, srv, map, fpt, viz=False):
         rospy.loginfo_throttle(1.0,
                 '{} : {}'.format(self._xpt, self._ypt))
         # unroll parameters / data
@@ -121,10 +121,11 @@ class GridMapper(object):
             xm = cast_ray(srv, xpt, [wlim, xpt[1]], a=np.pi/2, min_d=0.005)
 
             if not np.allclose(xpt, xm):
-                # mark ...
-                trace = fpt_hull(fpt, xpt, xm, a=np.pi/2)
-                trace = xy2uv(trace, w, h, map)
-                cv2.drawContours(map, [trace.T], 0, color=255, thickness=-1)
+                if viz:
+                    # mark ...
+                    trace = fpt_hull(fpt, xpt, xm, a=np.pi/2)
+                    trace = xy2uv(trace, w, h, map)
+                    cv2.drawContours(map, [trace.T], 0, color=255, thickness=-1)
 
                 #save
                 self._xseg.append(np.copy([xpt, xm]))
@@ -142,10 +143,11 @@ class GridMapper(object):
             ym = cast_ray(srv, ypt, [ypt[0], hlim], a=0., min_d=0.005)
 
             if not np.allclose(ypt, ym):
-                # mark ...
-                trace = fpt_hull(fpt, ypt, ym, a=0.)
-                trace = xy2uv(trace, w, h, map)
-                cv2.drawContours(map, [trace.T], 0, color=255, thickness=-1)
+                if viz:
+                    # mark ...
+                    trace = fpt_hull(fpt, ypt, ym, a=0.)
+                    trace = xy2uv(trace, w, h, map)
+                    cv2.drawContours(map, [trace.T], 0, color=255, thickness=-1)
 
                 # save
                 self._yseg.append(np.copy([ypt, ym]))

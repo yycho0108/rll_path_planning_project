@@ -87,95 +87,102 @@ class LocalPathPlanner(object):
                 ad1 = np.abs(angnorm(pose0.theta - path_theta))
                 ad2 = np.abs(angnorm(pose0.theta - (path_theta + np.pi)))
                 wpts_m2 = []
-                if ad1 > np.deg2rad(20.0) and ad2 > np.deg2rad(20.0): # rotation is required
-                    rospy.loginfo('Attempting Twiddle')
-                    # seq : {twiddle - rotate} - {twiddle - move}
-                    tw_suc = False
 
-                    # options:
-                    # 0.0 -> np.pi/2
-                    # 0.0 -> -np.pi/2
-                    # np.pi -> np.pi/2
-                    # np.pi -> -np.pi/2
+                for _ in range(10): # number of total twiddle tries
+                    if success: break
 
-                    if not tw_suc:
-                        tw_suc = True
-                        wpts_m2 = []
-                        thetas = angspace(pose0.theta, path_theta, num=5)[1:] #22.5,45.67.5,90
-                        pose_r = Pose2D(pose0.x, pose0.y, pose0.theta)
+                    tw_suc = True # set to true in case rotation is not required
+                    if ad1 > np.deg2rad(5.0) and ad2 > np.deg2rad(5.0): # rotation is required
+                        rospy.loginfo('Attempting Twiddle')
+                        # seq : {twiddle - rotate} - {twiddle - move}
+                        tw_suc = False
 
-                        for theta_r in thetas:
-                            for i in range(200):
-                                sign = np.random.choice([-1,1], size=2, replace=True)
-                                zx, zy = sign * np.random.uniform(0.005, 0.03, size=2)
-                                posem_r = Pose2D(pose_r.x+zx, pose_r.y+zy, theta_r) # in-place rot
-                                if srv(pose_r, posem_r).valid:
-                                    pose_r = posem_r
-                                    wpts_m2.append( Pose2D(posem_r.x, posem_r.y, posem_r.theta) )
-                                    break
-                            else:
-                                tw_suc = False
-                                break
+                        # options:
+                        # 0.0 -> np.pi/2
+                        # 0.0 -> -np.pi/2
+                        # np.pi -> np.pi/2
+                        # np.pi -> -np.pi/2
 
-                    if not tw_suc:
-                        path_theta = angnorm(path_theta + np.pi)
-                        tw_suc = True
-                        wpts_m2 = []
-                        thetas = angspace(pose0.theta, path_theta, num=5)[1:] #22.5,45.67.5,90
-                        pose_r = Pose2D(pose0.x, pose0.y, pose0.theta)
+                        if not tw_suc:
+                            tw_suc = True
+                            wpts_m2 = []
+                            thetas = angspace(pose0.theta, path_theta, num=5)[1:] #22.5,45.67.5,90
 
-                        for theta_r in thetas:
-                            for i in range(200):
-                                sign = np.random.choice([-1,1], size=2, replace=True)
-                                zx, zy = sign * np.random.uniform(0.005, 0.03, size=2)
-                                posem_r = Pose2D(pose_r.x+zx, pose_r.y+zy, theta_r) # in-place rot
-                                if srv(pose_r, posem_r).valid:
-                                    pose_r = posem_r
-                                    wpts_m2.append( Pose2D(posem_r.x, posem_r.y, posem_r.theta) )
-                                    break
-                            else:
-                                tw_suc = False
-                                break
+                            pose_r = Pose2D(pose0.x, pose0.y, pose0.theta)
+                            for theta_r in thetas:
+                                for i in range(100):
+                                    sign = np.random.choice([-1,1], size=2, replace=True)
+                                    zx, zy = sign * np.random.uniform(0.005, 0.02, size=2)
+                                    posem_r = Pose2D(pose_r.x+zx, pose_r.y+zy, theta_r) # in-place rot
+                                    if srv(pose_r, posem_r).valid:
+                                        pose_r = posem_r
+                                        wpts_m2.append( Pose2D(posem_r.x, posem_r.y, posem_r.theta) )
+                                        break
+                                else:
+                                    tw_suc = False
+                                    break # NOTE:breaks out of OUTER for loop!
 
-                    print 'tw_suc', tw_suc
-                else:
-                    # rotation is not required
-                    posem_r = pose0
+                        if not tw_suc:
+                            path_theta = angnorm(path_theta + np.pi)
+                            tw_suc = True
+                            wpts_m2 = []
+                            thetas = angspace(pose0.theta, path_theta, num=5)[1:] #22.5,45.67.5,90
 
-                #pose_r = posem_r
+                            pose_r = Pose2D(pose0.x, pose0.y, pose0.theta)
+                            for theta_r in thetas:
+                                for i in range(100):
+                                    sign = np.random.choice([-1,1], size=2, replace=True)
+                                    zx, zy = sign * np.random.uniform(0.005, 0.02, size=2)
+                                    posem_r = Pose2D(pose_r.x+zx, pose_r.y+zy, theta_r) # in-place rot
+                                    if srv(pose_r, posem_r).valid:
+                                        pose_r = posem_r
+                                        wpts_m2.append( Pose2D(posem_r.x, posem_r.y, posem_r.theta) )
+                                        break
+                                else:
+                                    tw_suc = False
+                                    break # NOTE: breaks out of OUTER for loop!
 
-                #if srv(pose0, pose0_z).valid and srv(pose0_z, posem_r).valid:
-                #    wpts_m2.append( Pose2D(pose0_z.x, pose0_z.y, pose0_z.theta) )
-                #    wpts_m2.append( Pose2D(posem_r.x, posem_r.y, posem_r.theta) )
-                #    tw_suc = True
-                #    print 'Twiddle Part Success!'
-                #    break
-
-                if tw_suc:
-                    pose1.theta = path_theta
-
-                    if srv(posem_r, pose1).valid:
-                        wpts_m2.append( Pose2D(pose1.x, pose1.y, path_theta) )
-                        new_wpts.extend(wpts_m2)
-                        success = True
+                        print 'tw_suc', tw_suc
                     else:
-                        for i in range(200):
-                            #sign = np.random.choice([-1,1], size=2, replace=True)
-                            #zx0, zy0 = sign * np.random.uniform(0.005, 0.03, size=2)
-                            #posem_t = Pose2D(posem_r.x+zx0, posem_r.y+zx0, path_theta)
-                            #if not srv(posem_r, posem_t).valid:
-                            #    continue
+                        # rotation is not required
+                        posem_r = pose0
 
-                            sign = np.random.choice([-1,1], size=2, replace=True)
-                            zx1, zy1 = sign * np.random.uniform(0.005, 0.03, size=2)
-                            pose1_z = Pose2D(pose1.x+zx1, pose1.y+zy1, path_theta)
+                    #pose_r = posem_r
 
-                            if srv(posem_r, pose1_z).valid:
-                                pose1 = pose1_z
-                                wpts_m2.append( Pose2D(pose1.x, pose1.y, path_theta) )
-                                new_wpts.extend(wpts_m2)
-                                success = True
-                                break
+                    #if srv(pose0, pose0_z).valid and srv(pose0_z, posem_r).valid:
+                    #    wpts_m2.append( Pose2D(pose0_z.x, pose0_z.y, pose0_z.theta) )
+                    #    wpts_m2.append( Pose2D(posem_r.x, posem_r.y, posem_r.theta) )
+                    #    tw_suc = True
+                    #    print 'Twiddle Part Success!'
+                    #    break
+
+                    if tw_suc:
+                        print 'twiddled to ...', p2l(posem_r)
+
+                        pose1.theta = path_theta
+
+                        if srv(posem_r, pose1).valid:
+                            wpts_m2.append( Pose2D(pose1.x, pose1.y, path_theta) )
+                            new_wpts.extend(wpts_m2)
+                            success = True
+                        else:
+                            for i in range(200):
+                                #sign = np.random.choice([-1,1], size=2, replace=True)
+                                #zx0, zy0 = sign * np.random.uniform(0.005, 0.03, size=2)
+                                #posem_t = Pose2D(posem_r.x+zx0, posem_r.y+zx0, path_theta)
+                                #if not srv(posem_r, posem_t).valid:
+                                #    continue
+
+                                sign = np.random.choice([-1,1], size=2, replace=True)
+                                zx1, zy1 = sign * np.random.uniform(0.005, 0.02, size=2)
+                                pose1_z = Pose2D(pose1.x+zx1, pose1.y+zy1, path_theta)
+
+                                if srv(posem_r, pose1_z).valid:
+                                    pose1 = pose1_z
+                                    wpts_m2.append( Pose2D(pose1.x, pose1.y, path_theta) )
+                                    new_wpts.extend(wpts_m2)
+                                    success = True
+                                    break
                     #if not success:
                     #    new_wpts.extend(wpts_m2) # debugging
 
@@ -275,23 +282,28 @@ class PathManager(object):
         self.server = actionlib.SimpleActionServer("plan_to_goal", PlanToGoalAction, self.execute, False)
         self.server.start()
 
+
     def execute(self, req):
+        # Testing Only!
+        viz = False
+
         # create service handles
         check_srv = rospy.ServiceProxy('check_path', CheckPath, persistent=True)
         move_srv  = rospy.ServiceProxy('move', Move)
 
         # phase 1 : mapping
         grid_mapper = GridMapper(self._mw, self._mh, self._fw, self._fh, r=0.02)
-        cv2.namedWindow('map', cv2.WINDOW_NORMAL)
+        if viz:
+            cv2.namedWindow('map', cv2.WINDOW_NORMAL)
         while not (grid_mapper.done()):
             try:
                 grid_mapper(check_srv, self._map, self._fpt)
             except Exception as e:
                 rospy.logerr_throttle(1.0, 'Grid Mapper Failed : {}'.format(e))
-            if True:
+            if viz:
                 cv2.imshow('map', self._map)
                 cv2.waitKey(1)
-        grid_mapper.save()
+        ## grid_mapper.save()
 
         xseg, yseg = grid_mapper._xseg, grid_mapper._yseg
         xseg = np.asarray(xseg, dtype=np.float32)
@@ -300,9 +312,9 @@ class PathManager(object):
             rospy.logerr_throttle(1.0, 'Grid Mapper Failed!')
             return
 
-        # use cached segments, NOTE : only for testing!!
-        #data_path = os.path.expanduser('~/segments.npy')
-        #xseg, yseg = np.load(data_path)
+        # alt 1: use cached segments, NOTE : only for testing!!
+        # data_path = os.path.expanduser('/tmp/segments.npy')
+        # xseg, yseg = np.load(data_path)
 
         # phase 2 : process path segments --> graph + plan
         pose0 = req.start

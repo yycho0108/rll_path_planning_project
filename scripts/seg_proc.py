@@ -377,6 +377,7 @@ class SegProc(object):
 
     def plan(self, joints, con):
         # WARNING : call plan after join_xy(), add_points() and related calls.
+        # TODO : add visualization argument, separate phases into functions, etc.
         src, dst = self._pidx
         dist = np.full(len(joints), 9999.0,  dtype=np.float32)
         dist[src] = 0.0
@@ -478,7 +479,8 @@ class SegProc(object):
                 break
 
 def main():
-    data_path = os.path.expanduser('~/segments.npy')
+    #data_path = os.path.expanduser('~/segments.npy')
+    data_path = os.path.expanduser('/tmp/segments.npy')
     xseg, yseg = np.load(data_path)
     #proc = SegProc(xseg, yseg, pts=[[0.38,0], [-0.37,0.5]])
     proc = SegProc(xseg, yseg, pts=[[-0.37, -0.5],[0.45,-0.26]])
