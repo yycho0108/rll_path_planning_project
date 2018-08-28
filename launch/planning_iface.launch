@@ -15,7 +15,7 @@
   <!-- Goal 2D pose  -->
   <arg name="goal_pos_x" default="0.45" />
   <arg name="goal_pos_y" default="-0.26" />
-  <arg name="goal_pos_theta" default="1.57" />
+  <arg name="goal_pos_theta" default="-1.57" />
 
 
   <!-- spawn grasp object in Gazebo -->

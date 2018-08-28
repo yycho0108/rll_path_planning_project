@@ -45,6 +45,8 @@ class LocalPathPlanner(object):
 
             pose0.x, pose0.y = start
             pose0.theta = theta
+
+            print 'planning from : {}'.format(p2l(pose0))
             delta = np.subtract(wpt, start)
             delta_dir = np.divide(delta, np.linalg.norm(delta))
 
@@ -67,25 +69,22 @@ class LocalPathPlanner(object):
                     new_wpts.append( Pose2D(pose1.x,pose1.y,pose1.theta) )
                     success = True
                     print '[{}] : {} ; {} -> {}'.format(wi, 1, p2l(pose0), p2l(pose1))
-                    start = [pose1.x, pose1.y]
-                    theta = pose1.theta
 
             # method 1, but try again 180'
             if not success:
                 path_theta = angnorm(path_theta + np.pi)
-                pose1.theta = angnorm(path_theta)
+                pose1.theta = path_theta
                 if srv(pose0, pose1).valid:
                     new_wpts.append( Pose2D(pose1.x,pose1.y,pose1.theta) )
                     success = True
                     print '[{}] : {} ; {} -> {}'.format(wi, 1, p2l(pose0), p2l(pose1))
-                    start = [pose1.x, pose1.y]
-                    theta = pose1.theta
 
             # method 2 : handle rotation first
             if not success:
                 ad1 = np.abs(angnorm(pose0.theta - path_theta))
                 ad2 = np.abs(angnorm(pose0.theta - (path_theta + np.pi)))
-                if ad1 > np.deg2rad(5.0) and ad2 > np.deg2rad(5.0): # rotation is required
+                wpts_m2 = []
+                if ad1 > np.deg2rad(20.0) and ad2 > np.deg2rad(20.0): # rotation is required
                     rospy.loginfo('Attempting Twiddle')
                     # seq : {twiddle - rotate} - {twiddle - move}
                     tw_suc = False
@@ -116,7 +115,7 @@ class LocalPathPlanner(object):
                                 break
 
                     if not tw_suc:
-                        path_theta = (path_theta + 2 * np.pi) % (2 * np.pi) - np.pi
+                        path_theta = angnorm(path_theta + np.pi)
                         tw_suc = True
                         wpts_m2 = []
                         thetas = angspace(pose0.theta, path_theta, num=5)[1:] #22.5,45.67.5,90
@@ -223,8 +222,9 @@ class LocalPathPlanner(object):
         # handle endpoint theta
         pose0.x, pose0.y = start
         pose0.theta = theta
-        d_theta = ((theta - t1 + np.pi) % (2*np.pi)) - np.pi
-        if np.abs(d_theta) > np.deg2rad(5): # NOTE : somewhat arbitrary angle tolerance assignment
+        d_theta = angnorm(theta - t1)
+        if np.abs(d_theta) > np.deg2rad(5):
+            # NOTE : somewhat arbitrary angle tolerance assignment
             for i in range(100):
                 zx, zy = np.random.uniform(-0.02, 0.02, size=2)
                 posem = Pose2D(pose0.x+zx, pose0.y+zy, t1)
@@ -238,6 +238,11 @@ class LocalPathPlanner(object):
         # even if the final endpoint-angle handling code fails,
         # still attempt the path to see if the result will be acceptable
         # (i.e. the code will not return [] as in previous failure cases)
+        print 'new_wpts'
+        print '==='
+        for wpt in new_wpts:
+            print p2l(wpt)
+        print '==='
 
         return new_wpts
 
