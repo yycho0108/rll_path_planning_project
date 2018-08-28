@@ -13,6 +13,9 @@ import os
 from path_mapper import GridMapper
 from seg_proc import SegProc
 
+def p2l(p):
+    return [p.x,p.y,p.theta]
+
 class LocalPathPlanner(object):
     def __init__(self):
         pass
@@ -27,7 +30,9 @@ class LocalPathPlanner(object):
         start = wpts[0] # immutable
         theta = t0
 
-        for wi, wpt in enumerate(wpts[1:]):
+        for wi, wpt in enumerate(wpts):
+            if wi==0: continue # avoid confusing wi index
+
             pose0.x, pose0.y = start
             pose0.theta = theta
             delta = np.subtract(wpt, start)
@@ -50,26 +55,67 @@ class LocalPathPlanner(object):
                 if srv(pose0, pose1).valid:
                     new_wpts.append( Pose2D(pose1.x,pose1.y,pose1.theta) )
                     success = True
-                    print '[{}] : {}'.format(wi, 1)
+                    print '[{}] : {} ; {} -> {}'.format(wi, 1, p2l(pose0), p2l(pose1))
                     start = [pose1.x, pose1.y]
                     theta = pose1.theta
 
-            # method 2 : handle angular transition first
+            # method 2 : handle rotation first
             if not success:
-                dx, dy = delta_dir * 0.01
-                posem = Pose2D(pose0.x+dx, pose1.y+dy, path_theta)
-                posem2 = Pose2D(pose0.x, pose1.y, path_theta)
-                if srv(pose0, posem).valid and srv(posem, posem2).valid\
-                        and srv(posem2, pose1).valid:
-                    new_wpts.append( Pose2D(posem.x, posem.y, posem.theta) )
-                    new_wpts.append( Pose2D(posem2.x, posem2.y, posem2.theta) )
-                    new_wpts.append( Pose2D(pose1.x, pose1.y, pose1.theta) )
-                    success = True
-                    print '[{}] : {}'.format(wi, 2)
+                rospy.loginfo('Attempting Twiddle')
+                # seq : {twiddle - rotate} - {twiddle - move}
+                tw_suc = False
+                wpts_m2 = []
+                thetas = np.linspace(pose0.theta, path_theta, num=4)[1:]
+
+                for i in range(100):
+                    sign = np.random.choice([-1,1], size=2, replace=True)
+                    zx0, zy0 = sign * np.random.uniform(0.005, 0.02, size=2)
+                    sign = np.random.choice([-1,1], size=2, replace=True)
+                    zx_r, zy_r = sign * np.random.uniform(0.005, 0.02, size=2) #rotate
+
+                    pose0_z = Pose2D(pose0.x+zx0, pose0.y+zy0, pose0.theta)
+                    print (pose0.theta + path_theta) / 2.0
+                    posem_r = Pose2D(pose0_z.x+zx_r, pose0_z.y+zy_r, (pose0.theta + path_theta)) # in-place rot
+
+                    if srv(pose0, pose0_z).valid and srv(pose0_z, posem_r).valid:
+                        wpts_m2.append( Pose2D(pose0_z.x, pose0_z.y, pose0_z.theta) )
+                        wpts_m2.append( Pose2D(posem_r.x, posem_r.y, posem_r.theta) )
+                        tw_suc = True
+                        print 'Twiddle Part Success!'
+                        break
+
+                if tw_suc:
+                    if srv(posem_r, pose1).valid:
+                        wpts_m2.append( Pose2D(pose1.x, pose1.y, pose1.theta) )
+                        new_wpts.extend(wpts_m2)
+                        success = True
+                    else:
+                        for i in range(100):
+                            zx1, zy1 = np.random.uniform(-0.02, 0.02, size=2)
+                            pose1_z = Pose2D(pose1.x+zx1, pose1.y+zy1, path_theta)
+
+                            if srv(posem_r, pose1_z).valid:
+                                pose1 = pose1_z
+                                wpts_m2.append( Pose2D(pose1.x, pose1.y, pose1.theta) )
+                                new_wpts.extend(wpts_m2)
+                                success = True
+
+                # seq : static_twiddle - rotate - move
+                #dx, dy = delta_dir * 0.01
+                #posem = Pose2D(pose0.x+dx, pose1.y+dy, path_theta)
+                #posem2 = Pose2D(pose0.x, pose1.y, path_theta)
+                #if srv(pose0, posem).valid and srv(posem, posem2).valid\
+                #        and srv(posem2, pose1).valid:
+                #    new_wpts.append( Pose2D(posem.x, posem.y, posem.theta) )
+                #    new_wpts.append( Pose2D(posem2.x, posem2.y, posem2.theta) )
+                #    new_wpts.append( Pose2D(pose1.x, pose1.y, pose1.theta) )
+                #    success = True
+                #    print '[{}] : {} ; {} -> {} -> {}'.format(wi, 2, p2l(pose0), p2l(posem), p2l(pose1))
 
             # method 3: sample random intermediate points until valid
             # NOTE : also samples endpoints at random offsets within +-2cm
             if not success:
+                rospy.loginfo('Attempting Random Intermediate Points')
                 for i in range(100): # 100 tries [TODO : make configurable]
                     dx, dy = delta * np.random.uniform()
                     zxm, zym = np.random.uniform(-0.02, 0.02, size=2)
@@ -82,14 +128,14 @@ class LocalPathPlanner(object):
                         new_wpts.append( Pose2D(posem.x, posem.y, posem.theta) )
                         new_wpts.append( Pose2D(pose1.x, pose1.y, pose1.theta) )
                         success = True
-                        print '[{}] : {}'.format(wi, 2)
+                        print '[{}] : {} ; {} -> {} -> {}'.format(wi, 3, p2l(pose0), p2l(posem), p2l(pose1))
                         break
 
             if not success:
                 print 'failed to compute local path! \n\t src : \n {} \n\t dst \n {}'.format(pose0, pose1)
-                print '{}/{}'.format(wi+1, len(wpts))
+                print '{}/{}'.format(wi, len(wpts))
                 # abort
-                return []
+                return new_wpts
 
             # reset starting point
             start = [pose1.x, pose1.y]
