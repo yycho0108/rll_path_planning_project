@@ -153,6 +153,9 @@ class GridMapper(object):
             # set to next point
             ypt[1] = max(ypt[1]+r, ym[1]+r)
 
+    def done(self):
+        return (self._xfin and self._yfin)
+
     def save(self):
         np.save('/tmp/segments.npy', [self._xseg, self._yseg])
 

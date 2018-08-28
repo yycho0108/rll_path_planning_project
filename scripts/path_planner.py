@@ -124,7 +124,7 @@ class LocalPathPlanner(object):
                         pose_r = Pose2D(pose0.x, pose0.y, pose0.theta)
 
                         for theta_r in thetas:
-                            for i in range(100):
+                            for i in range(200):
                                 sign = np.random.choice([-1,1], size=2, replace=True)
                                 zx, zy = sign * np.random.uniform(0.005, 0.03, size=2)
                                 posem_r = Pose2D(pose_r.x+zx, pose_r.y+zy, theta_r) # in-place rot
@@ -158,7 +158,7 @@ class LocalPathPlanner(object):
                         new_wpts.extend(wpts_m2)
                         success = True
                     else:
-                        for i in range(100):
+                        for i in range(200):
                             #sign = np.random.choice([-1,1], size=2, replace=True)
                             #zx0, zy0 = sign * np.random.uniform(0.005, 0.03, size=2)
                             #posem_t = Pose2D(posem_r.x+zx0, posem_r.y+zx0, path_theta)
@@ -281,7 +281,7 @@ class PathManager(object):
 
         # phase 1 : mapping
         # grid_mapper = GridMapper(mw, mh, fw, fh, r=0.02)
-        # while not (grid_mapper._xfin and grid_mapper._yfin):
+        # while not (grid_mapper.done()):
         #     try:
         #         grid_mapper(check_srv, self._map, self._fpt)
         #     except Exception as e:
