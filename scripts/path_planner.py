@@ -293,7 +293,7 @@ class PathManager(object):
         #     rospy.logerr_throttle(1.0, 'Grid Mapper Failed!')
         #     return
 
-        # use cached segments, only for testing!!
+        # use cached segments, NOTE : only for testing!!
         data_path = os.path.expanduser('~/segments.npy')
         xseg, yseg = np.load(data_path)
 
