@@ -58,6 +58,8 @@ class LocalPathPlanner(object):
             else:
                 path_theta = 0.0 # 0.0 or np.pi
 
+            #if wi == (len(wpts) - 1):
+            #    path_theta = t1 # try?
 
             success = False
 
@@ -102,7 +104,7 @@ class LocalPathPlanner(object):
                         pose_r = Pose2D(pose0.x, pose0.y, pose0.theta)
 
                         for theta_r in thetas:
-                            for i in range(100):
+                            for i in range(200):
                                 sign = np.random.choice([-1,1], size=2, replace=True)
                                 zx, zy = sign * np.random.uniform(0.005, 0.03, size=2)
                                 posem_r = Pose2D(pose_r.x+zx, pose_r.y+zy, theta_r) # in-place rot
