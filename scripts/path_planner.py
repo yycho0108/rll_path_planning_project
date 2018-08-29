@@ -167,23 +167,31 @@ class LocalPathPlanner(object):
                             new_wpts.extend(wpts_m2)
                             success = True
                         else:
-                            for i in range(200):
-                                #sign = np.random.choice([-1,1], size=2, replace=True)
-                                #zx0, zy0 = sign * np.random.uniform(0.005, 0.03, size=2)
-                                #posem_t = Pose2D(posem_r.x+zx0, posem_r.y+zx0, path_theta)
-                                #if not srv(posem_r, posem_t).valid:
-                                #    continue
+                            # try with 180'
+                            path_theta = angnorm(path_theta + np.pi)
+                            pose1.theta =  path_theta
+                            if srv(posem_r, pose1).valid:
+                                wpts_m2.append( Pose2D(pose1.x, pose1.y, path_theta) )
+                                new_wpts.extend(wpts_m2)
+                                success = True
+                            else:
+                                for i in range(200):
+                                    #sign = np.random.choice([-1,1], size=2, replace=True)
+                                    #zx0, zy0 = sign * np.random.uniform(0.005, 0.03, size=2)
+                                    #posem_t = Pose2D(posem_r.x+zx0, posem_r.y+zx0, path_theta)
+                                    #if not srv(posem_r, posem_t).valid:
+                                    #    continue
 
-                                sign = np.random.choice([-1,1], size=2, replace=True)
-                                zx1, zy1 = sign * np.random.uniform(0.005, 0.02, size=2)
-                                pose1_z = Pose2D(pose1.x+zx1, pose1.y+zy1, path_theta)
+                                    sign = np.random.choice([-1,1], size=2, replace=True)
+                                    zx1, zy1 = sign * np.random.uniform(0.005, 0.02, size=2)
+                                    pose1_z = Pose2D(pose1.x+zx1, pose1.y+zy1, path_theta)
 
-                                if srv(posem_r, pose1_z).valid:
-                                    pose1 = pose1_z
-                                    wpts_m2.append( Pose2D(pose1.x, pose1.y, path_theta) )
-                                    new_wpts.extend(wpts_m2)
-                                    success = True
-                                    break
+                                    if srv(posem_r, pose1_z).valid:
+                                        pose1 = pose1_z
+                                        wpts_m2.append( Pose2D(pose1.x, pose1.y, path_theta) )
+                                        new_wpts.extend(wpts_m2)
+                                        success = True
+                                        break
                     #if not success:
                     #    new_wpts.extend(wpts_m2) # debugging
 
@@ -314,7 +322,7 @@ class PathManager(object):
         #    return
 
         # alt 1: use cached segments, NOTE : only for testing!!
-        data_path = os.path.expanduser('/tmp/segments.npy')
+        data_path = os.path.expanduser('~/segments.npy')
         xseg, yseg = np.load(data_path)
 
         # phase 2 : process path segments --> graph + plan

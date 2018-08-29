@@ -9,13 +9,13 @@
   <arg name="grasp_object_dim_z" default="0.04" />
   
   <!-- Start 2D pose  -->
-  <arg name="start_pos_x" default="-0.37" />
-  <arg name="start_pos_y" default="-0.5" />
+  <arg name="start_pos_x" default="-0.372" />
+  <arg name="start_pos_y" default="0.515" />
   <arg name="start_pos_theta" default="0.0" />
   <!-- Goal 2D pose  -->
-  <arg name="goal_pos_x" default="0.45" />
-  <arg name="goal_pos_y" default="-0.26" />
-  <arg name="goal_pos_theta" default="4.71" />
+  <arg name="goal_pos_x" default="0.0" />
+  <arg name="goal_pos_y" default="-0.505" />
+  <arg name="goal_pos_theta" default="0.0" />
 
 
   <!-- spawn grasp object in Gazebo -->
