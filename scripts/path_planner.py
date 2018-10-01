@@ -10,8 +10,8 @@ import math
 
 import numpy as np
 import os
-from path_mapper import GridMapper
-from seg_proc import SegProc
+from rll_planning_project.grid_mapper import GridMapper
+from rll_planning_project.seg_proc import SegProc
 import cv2
 
 def p2l(p):
@@ -271,6 +271,7 @@ class PathManager(object):
         self._mw = mw = float(rospy.get_param('~map_width', default=1.2))
         self._mh = mh = float(rospy.get_param('~map_length', default=1.6))
         self._mr = mr = float(rospy.get_param('~map_res', default=0.005))
+        self._use_cache = rospy.get_param('~use_cache', default=False)
         n, m = int(np.round(mw/mr)), int(np.round((mh/mr)))
         self._map = np.zeros(shape=(n,m), dtype=np.uint8)
 
@@ -300,30 +301,32 @@ class PathManager(object):
         check_srv = rospy.ServiceProxy('check_path', CheckPath, persistent=True)
         move_srv  = rospy.ServiceProxy('move', Move)
 
-        # phase 1 : mapping
-        # grid_mapper = GridMapper(self._mw, self._mh, self._fw, self._fh, r=0.02)
-        # if viz:
-        #     cv2.namedWindow('map', cv2.WINDOW_NORMAL)
-        # while not (grid_mapper.done()):
-        #     try:
-        #         grid_mapper(check_srv, self._map, self._fpt)
-        #     except Exception as e:
-        #         rospy.logerr_throttle(1.0, 'Grid Mapper Failed : {}'.format(e))
-        #     if viz:
-        #         cv2.imshow('map', self._map)
-        #         cv2.waitKey(1)
-        ## grid_mapper.save()
-
-        #xseg, yseg = grid_mapper._xseg, grid_mapper._yseg
-        #xseg = np.asarray(xseg, dtype=np.float32)
-        #yseg = np.asarray(yseg, dtype=np.float32)
-        #if len(xseg) <= 0 or len(yseg) <= 0:
-        #    rospy.logerr_throttle(1.0, 'Grid Mapper Failed!')
-        #    return
 
         # alt 1: use cached segments, NOTE : only for testing!!
-        data_path = os.path.expanduser('~/segments.npy')
-        xseg, yseg = np.load(data_path)
+        if self._use_cache:
+            data_path = os.path.expanduser('~/segments.npy')
+            xseg, yseg = np.load(data_path)
+        else:
+            # phase 1 : mapping
+            grid_mapper = GridMapper(self._mw, self._mh, self._fw, self._fh, r=0.02)
+            if viz:
+                cv2.namedWindow('map', cv2.WINDOW_NORMAL)
+            while not (grid_mapper.done()):
+                try:
+                    grid_mapper(check_srv, self._map, self._fpt)
+                except Exception as e:
+                    rospy.logerr_throttle(1.0, 'Grid Mapper Failed : {}'.format(e))
+                if viz:
+                    cv2.imshow('map', self._map)
+                    cv2.waitKey(1)
+            # grid_mapper.save()
+
+            xseg, yseg = grid_mapper._xseg, grid_mapper._yseg
+            xseg = np.asarray(xseg, dtype=np.float32)
+            yseg = np.asarray(yseg, dtype=np.float32)
+            if len(xseg) <= 0 or len(yseg) <= 0:
+                rospy.logerr_throttle(1.0, 'Grid Mapper Failed!')
+                return
 
         # phase 2 : process path segments --> graph + plan
         pose0 = req.start
