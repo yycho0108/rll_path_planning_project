@@ -5,6 +5,7 @@ add_compile_options(-std=c++11)
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp
+  rospy
   message_generation
   std_srvs
   std_msgs
@@ -16,6 +17,8 @@ find_package(catkin REQUIRED COMPONENTS
   rll_move
   genmsg actionlib_msgs actionlib
 )
+
+catkin_python_setup()
 
 add_service_files(
   FILES
