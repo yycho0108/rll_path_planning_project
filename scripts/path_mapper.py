@@ -5,7 +5,9 @@ import actionlib
 from rll_planning_project.srv import *
 from rll_planning_project.msg import *
 from rll_planning_project import utils as U
-from rll_planning_project.grid_mapper import GridMapper
+#from rll_planning_project.mc_mapper import monte_carlo_checker
+#from rll_planning_project.grid_mapper import GridMapper
+from rll_planning_project.skel_mapper import SkelMapper
 
 from geometry_msgs.msg import Pose2D
 from heapq import heappush, heappop # for priority queue
@@ -120,8 +122,10 @@ class PathMapper:
         self._init_flag = False
         self._stop_flag = False
 
-        # grid checker handle
-        self._grid_checker = GridMapper(mw, mh, fw, fh, r=0.02)
+        # mapper handle
+        #self.mapper_ = monte_carlo_mapper
+        #self.mapper_ = GridMapper(mw, mh, fw, fh, r=0.02)
+        self.mapper_ = SkelMapper(mw, mh, fw, fh, r=0.02)
 
         # Provide Services
         self._step = rospy.Service('step', Empty, self.step_cb)
@@ -129,19 +133,18 @@ class PathMapper:
         self.server = actionlib.SimpleActionServer("plan_to_goal", PlanToGoalAction, self.execute, False)
         self.server.start()
 
-        rospy.on_shutdown(self._grid_checker.save)
+        rospy.on_shutdown(self.mapper_.save)
 
     def step_cb(self, _):
         if not self._init_flag:
             return EmptyResponse()
         try:
-            self._grid_checker(self._check_srv, self._map, self._fpt)
+            self.mapper_(self._check_srv, self._map, self._fpt, log=rospy.loginfo)
             #monte_carlo_checker(self._check_srv,
             #        self._map,self._fpt,
             #        self._mw, self._mh, a=0)#np.pi/2)
         except Exception as e:
-            #rospy.logerr_throttle(1.0, 'Monte Carlo Mapper Failed : {}'.format(e))
-            rospy.logerr_throttle(1.0, 'Grid Mapper Failed : {}'.format(e))
+            rospy.logerr_throttle(1.0, 'Mapper Failed : {}'.format(e))
         return EmptyResponse()
 
     def stop_cb(self, _):
@@ -162,6 +165,10 @@ class PathMapper:
 
         cv_flag = False
         ros_flag = False
+
+        src = [req.start.x, req.start.y, req.start.theta]
+        dst = [req.goal.x, req.goal.y, req.goal.theta]
+        self.mapper_.reset(self._check_srv, src, dst)
 
         while True:
             #rate.sleep()

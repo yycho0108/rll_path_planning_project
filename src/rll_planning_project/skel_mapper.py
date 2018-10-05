@@ -108,7 +108,7 @@ class SkelMapper(object):
 
         if not np.allclose(srcs[-1], seg[1]):
             # account for endpoints since they tend to be important
-            srcs = np.concatenate(srcs, [seg[1]], axis=0)
+            srcs = np.concatenate( (srcs, [seg[1]]), axis=0)
 
         for src in srcs:
             if (skip is not None) and np.allclose(src, skip):
@@ -136,7 +136,7 @@ class SkelMapper(object):
                 where seg0s[i] and seg1s[j] intersected.
         """
         for i, seg0 in enumerate(seg0s):
-            for j, seg1s in enumerate(seg1s):
+            for j, seg1 in enumerate(seg1s):
                 if segment_intersect(seg0, seg1):
                     return True, (i,j)
 
@@ -160,8 +160,8 @@ class SkelMapper(object):
         x0, y0, h0 = src
         x1, y1, h1 = dst
 
-        self.seg_s_ = [self.expand(srv, src, h0)]
-        self.seg_g_ = [self.expand(srv, dst, h1)]
+        self.seg_s_ = [self.expand(srv, [x0,y0], h0)]
+        self.seg_g_ = [self.expand(srv, [x1,y1], h1)]
 
         self.s_tree_ = {} # (i) -> [j,k,l], 
         self.g_tree_ = {}
@@ -169,14 +169,15 @@ class SkelMapper(object):
         self.si0_, self.si1_ = 0, 1
         self.gi0_, self.gi1_ = 0, 1
 
+    @staticmethod
+    def null_log(*args, **kwargs):
+        return
+
     def __call__(self, srv, map, fpt, viz=False, log=None):
         """ Single step """
         viz = (viz and viz_enabled) # check global viz flag
-
-        if log is not None:
-            log('{} : {}'.format(self._xpt, self._ypt))
-
-        self.reset(srv, src, dst)
+        if log is None:
+            log=self.null_log
 
         # unroll parameters
         seg_s, seg_g = self.seg_s_, self.seg_g_
@@ -192,13 +193,16 @@ class SkelMapper(object):
             self.done_ = True
             return
 
+        log('{}'.format(len(seg_s)))
+
         # search for new segments, branching from old ones
         for seg in seg_s[si0:si1]:
-            new_segs = self.search(seg, skip=None, pad=0.0, min_l=0.02)
+            new_segs = self.search(srv, seg, skip=None, pad=0.0, min_l=0.02)
+            log('new: {}'.format(new_segs))
             seg_s.extend(new_segs) # in-place update
 
         for seg in seg_g[gi0:gi1]:
-            new_segs = self.search(seg, skip=None, pad=0.0, min_l=0.02)
+            new_segs = self.search(srv, seg, skip=None, pad=0.0, min_l=0.02)
             seg_g.extend(new_segs) # in-place update
 
         # update segment indexing range

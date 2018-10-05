@@ -54,3 +54,12 @@ The initial position and the dimensions of the grasp object can be changed in th
 ### Interface
 ![alt text](Images/Simulation.png)
 
+## Running
+
+### Demo : Skeletal Mapping
+
+```bash
+roslaunch rll_planning_project min_sim.launch
+roslaunch rll_planning_project path_mapper.launch
+rosrun actionlib axclient.py /iiwa/plan_to_goal rll_planning_project/PlanToGoalAction
+```
