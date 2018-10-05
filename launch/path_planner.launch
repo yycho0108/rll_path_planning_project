@@ -5,6 +5,7 @@
   <node ns="$(arg robot)" name="path_planner" pkg="rll_planning_project" type="path_planner.py" respawn="false" output="screen">
   	<param name="map_width" value="1.2" />
   	<param name="map_length" value="1.6" />
+    <param name="use_cache" value="true"/>
   </node>
 
 </launch>

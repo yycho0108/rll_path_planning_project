@@ -13,3 +13,9 @@ def xy2uv(xy, w, h, n, m):
 def R(x):
     c,s = np.cos(x), np.sin(x)
     return np.asarray([[c,-s],[s,c]], dtype=np.float32) #2x2
+
+def anorm(x):
+    return (x + np.pi) % (2 * np.pi) - np.pi
+
+def adiff(a,b):
+    return anorm(a-b)

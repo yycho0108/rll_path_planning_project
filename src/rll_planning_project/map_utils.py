@@ -4,7 +4,21 @@ from scipy.spatial import ConvexHull
 import utils as U
 
 def cast_ray(srv, p0, p1, a=0, min_d=0.005):
-    """ Search ray collision point via simple binary search""" 
+    """ Search ray collision point via simple binary search.
+
+    Args:
+        srv(function(p0,p1)->bool): check if path from p0 to p1 is valid.
+            p0(geometry_msgs/Pose2D): initial point
+            p1(geometry_msgs/Pose2D): final point
+        p0(np.ndarray): Ray start, [2] array formatted (x,y)
+        p1(np.ndarray): Ray end, [2] array formatted (x,y)
+        a(float): Object orientation during path, radians
+        min_d(float): raycasting collision search resolution
+
+    Returns:
+        pm(np.ndarray): Ray colliison endpoint [2] array formatted (x,y)
+    
+    """ 
     p0p = Pose2D(x=p0[0], y=p0[1], theta=a)
     p1p = Pose2D(x=p1[0], y=p1[1], theta=a)
 
@@ -28,6 +42,16 @@ def cast_ray(srv, p0, p1, a=0, min_d=0.005):
             return p0m
 
 def fpt_hull(fpt, p0, p1, a0=0, a1=None):
+    """ Convex Hull from footprint trajectory.
+
+    Args:
+        fpt(np.ndarray): [N,2] polygon formatted (x,y)
+        p0(np.ndarray): segment start, [2] array formatted (x,y)
+        p1(np.ndarray): segment end, [2] array formatted (x,y)
+        a0(float): segment start angle, radians (default: 0)
+        a1(float): segment end angle, radians (default: a0)
+
+    """
     if a1 is None:
         a1 = a0
     r0 = U.R(a0).dot(fpt) + np.reshape(p0, [2,1])
