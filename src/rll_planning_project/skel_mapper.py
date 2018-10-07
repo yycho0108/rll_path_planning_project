@@ -3,7 +3,7 @@
 viz_enabled = True
 import numpy as np
 import utils as U
-from map_utils import cast_ray
+from map_utils import cast_ray, fpt_hull
 from seg_utils import segment_intersect
 
 try:
@@ -13,6 +13,11 @@ except ImportError as e:
     print('cv2/scipy import failed : {}'.format(e))
     print('visualization disabled.')
     viz_enabled = False
+
+def seg_h(seg):
+    pa,pb = seg
+    delta = pb-pa
+    return np.arctan2(delta[1],delta[0])
 
 class SkelMapper(object):
     """
@@ -75,7 +80,7 @@ class SkelMapper(object):
         pm1 = cast_ray(srv, src, p1, a=U.anorm(ang+np.pi/2), min_d=0.005)
         return np.asarray([pm0, pm1], dtype=np.float32)
 
-    def search(self, srv, seg, skip=None, pad=0.0, min_l=0.02, min_d=0.05):
+    def search(self, srv, seg, skip=None, pad=0.0, min_l=0.02, min_d=0.02):
         """ search along segment for orthogonal segments.
 
         Note:
@@ -100,6 +105,7 @@ class SkelMapper(object):
             # seg[1] == seg[0], single-point
             return []
         d /= l
+        print('src-d : {}'.format(d))
 
         # set search angle to be  perpendicular to source segment
         ang = U.anorm(np.arctan2(d[1], d[0]) + np.pi/2)
@@ -127,8 +133,6 @@ class SkelMapper(object):
                 # skip source
                 continue
             new_seg = self.expand(srv, src, ang)
-            print new_seg
-            print new_seg[1] - new_seg[0]
 
             l_seg = np.linalg.norm(new_seg[1] - new_seg[0])
 
@@ -163,6 +167,9 @@ class SkelMapper(object):
 
         print('len(segs) : {}'.format(len(segs)))
         print('segs : {}'.format(segs))
+
+        #for seg in segs:
+        #    print('dst-d : {}'.format(seg_h(seg)))
 
         return segs
 
@@ -267,9 +274,14 @@ class SkelMapper(object):
         if viz:
             w,h = self._w, self._h
             n,m = map.shape[:2]
-            for seg in segs:
-                trace = fpt_hull(fpt, seg[0], seg[1], a=np.arctan2(seg[1], seg[0]))
-                U.xy2uv(trace, w, h, n, m)
+            for segs in [seg_s, seg_g]:
+                for seg in segs:
+                    delta = (seg[1] - seg[0])
+                    theta = np.arctan2(delta[1], delta[0])
+                    trace = fpt_hull(fpt, seg[0], seg[1], a0=theta)
+                    trace = U.xy2uv(trace, w, h, n, m)
+                    cv2.drawContours(map, [trace.T], 0, color=255, thickness=-1)
+
 
     def done(self):
         return self.done_

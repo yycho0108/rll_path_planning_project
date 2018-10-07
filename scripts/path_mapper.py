@@ -139,7 +139,7 @@ class PathMapper:
         if not self._init_flag:
             return EmptyResponse()
         try:
-            self.mapper_(self._check_srv, self._map, self._fpt, log=rospy.loginfo)
+            self.mapper_(self._check_srv, self._map, self._fpt, log=rospy.loginfo, viz=True)
             #monte_carlo_checker(self._check_srv,
             #        self._map,self._fpt,
             #        self._mw, self._mh, a=0)#np.pi/2)

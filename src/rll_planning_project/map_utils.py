@@ -56,7 +56,7 @@ def fpt_hull(fpt, p0, p1, a0=0, a1=None):
         a1 = a0
     r0 = U.R(a0).dot(fpt) + np.reshape(p0, [2,1])
     r1 = U.R(a1).dot(fpt) + np.reshape(p1, [2,1])
-    ps = np.concatenate([r0,r1], axis=-1) # 2x8
+    ps = np.concatenate([r0,r1], axis=1) # 2x8
     hull = ps.T[ConvexHull(ps.T).vertices].T# TODO: ps.T??
     return hull
 
