@@ -54,9 +54,11 @@ class SkelMapper(object):
 
         x, y = src
         # TODO : check xy-segment orientation
-        if np.allclose(np.cos(ang), 0): # x   
+        if np.allclose(np.cos(ang), 1.0): # == along x
+            # fix y, x-directional segment
             return [0, y], [wlim, y]
         else:
+            # fix x, y-directional segment
             return [x, 0], [x, hlim]
 
     def expand(self, srv, src, ang):
@@ -69,11 +71,11 @@ class SkelMapper(object):
         """
         x,y = src
         p0, p1 = self.lim_dir(src, ang)
-        pm0 = cast_ray(srv, src, p0, a=ang, min_d=0.005)
-        pm1 = cast_ray(srv, src, p1, a=ang, min_d=0.005)
-        return [pm0, pm1]
+        pm0 = cast_ray(srv, src, p0, a=U.anorm(ang+np.pi/2), min_d=0.005)
+        pm1 = cast_ray(srv, src, p1, a=U.anorm(ang+np.pi/2), min_d=0.005)
+        return np.asarray([pm0, pm1], dtype=np.float32)
 
-    def search(self, srv, seg, skip=None, pad=0.0, min_l=0.02):
+    def search(self, srv, seg, skip=None, pad=0.0, min_l=0.02, min_d=0.05):
         """ search along segment for orthogonal segments.
 
         Note:
@@ -94,30 +96,73 @@ class SkelMapper(object):
 
         d = seg[1] - seg[0]
         l = np.linalg.norm(d)
+        if np.isclose(l, 0):
+            # seg[1] == seg[0], single-point
+            return []
         d /= l
 
         # set search angle to be  perpendicular to source segment
         ang = U.anorm(np.arctan2(d[1], d[0]) + np.pi/2)
 
         # define search steps from seg[0] to seg[1] with resolution _r
-        steps = d.reshape(1,2) * np.arange(-pad,l+pad,step=self._r).reshape(-1,1)
+        steps = np.arange(-pad,l+pad,step=self._r).reshape(-1,1)
+        diffs = d.reshape(1,2) * steps
 
         # seg[:1] = (1,2)
         # steps = (N,2)
-        srcs = seg[:1] + steps # = (N,2)
+        srcs = seg[:1] + diffs # = (N,2)
 
-        if not np.allclose(srcs[-1], seg[1]):
-            # account for endpoints since they tend to be important
-            srcs = np.concatenate( (srcs, [seg[1]]), axis=0)
+        #if not np.allclose(srcs[-1], seg[1]):
+        #    # account for endpoints since they tend to be important
+        #    srcs = np.concatenate( (srcs, [seg[1]]), axis=0)
+        #    steps = np.concatenate( (srcs, 
 
-        for src in srcs:
+        si0 = None
+        s_ref = None
+        si1 = None
+        new_seg = None
+
+        for si, src in enumerate(srcs):
             if (skip is not None) and np.allclose(src, skip):
                 # skip source
                 continue
             new_seg = self.expand(srv, src, ang)
+            print new_seg
+            print new_seg[1] - new_seg[0]
+
             l_seg = np.linalg.norm(new_seg[1] - new_seg[0])
+
+            # filter by length
             if l_seg > min_l:
+                # filter by previous seg.
+                if si0 is None:
+                    si0 = si 
+                    si1 = si 
+                    s_ref = new_seg
+                else:
+                    pa_c = np.linalg.norm(s_ref[0] - new_seg[0]) < min_d
+                    pb_c = np.linalg.norm(s_ref[1] - new_seg[1]) < min_d
+                    d_c  = np.abs(steps[si] - steps[si1]) < min_d
+
+                    if (pa_c & pb_c & d_c):
+                        # matches with old segment
+                        si1 = si
+                        s_ref = new_seg
+                    else:
+                        # save old sgement
+                        prv_seg = np.mean([srcs[si0], srcs[si1]], axis=0)
+                        segs.append(prv_seg)
+                        # form new segment
+                        si0 = si
+                        si1 = si
+                        s_ref = new_seg
+
+        if si0 == si1: # last new segment was not saved
+            if new_seg is not None:
                 segs.append(new_seg)
+
+        print('len(segs) : {}'.format(len(segs)))
+        print('segs : {}'.format(segs))
 
         return segs
 
@@ -218,6 +263,13 @@ class SkelMapper(object):
             # meaning no further progress can be made
             self.path_ = []
             self.done_ = True
+
+        if viz:
+            w,h = self._w, self._h
+            n,m = map.shape[:2]
+            for seg in segs:
+                trace = fpt_hull(fpt, seg[0], seg[1], a=np.arctan2(seg[1], seg[0]))
+                U.xy2uv(trace, w, h, n, m)
 
     def done(self):
         return self.done_

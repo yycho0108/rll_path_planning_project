@@ -172,7 +172,7 @@ class PathMapper:
 
         while True:
             #rate.sleep()
-            self.step_cb(None)
+            #self.step_cb(None)
             cv2.imshow('map', self._map)
             k = cv2.waitKey(max(1, delay_t))
 
