@@ -126,10 +126,9 @@ class SkelMapper(object):
 
         s_0 = None
         s_1 = None
-        si1 = None
         new_seg = None
 
-        for si, src in enumerate(srcs):
+        for src in srcs:
             if (skip is not None) and np.allclose(src, skip):
                 # skip source
                 continue
@@ -143,25 +142,19 @@ class SkelMapper(object):
                 if s_0 is None:
                     s_0 = new_seg
                     s_1 = new_seg
-                    si1 = si
                 else:
-                    if seg_joinable(new_seg, s_1):
-                    #pa_c = np.linalg.norm(s_1[0] - new_seg[0]) < min_d
-                    #pb_c = np.linalg.norm(s_1[1] - new_seg[1]) < min_d
-                    #d_c  = np.abs(steps[si] - steps[si1]) < min_d
-
-                    #if (pa_c & pb_c & d_c):
+                    if seg_joinable(s_1, new_seg):
                         # matches with old segment
                         s_1 = new_seg
-                        si1 = si
                     else:
                         # save old segment
+                        print('old : ' , s_1)
+                        print('new : ' , new_seg)
                         prv_seg = np.mean([s_0,s_1], axis=0)
                         segs.append(prv_seg)
                         # form new segment
                         s_0 = new_seg
                         s_1 = new_seg
-                        si1 = si
 
         if s_0 is not None and np.allclose(s_0 - s_1, 0):
             # last new segment was not saved
@@ -271,7 +264,6 @@ class SkelMapper(object):
                     if seg_joinable(s0,s1):
                         break
                 else:
-                    print('s0', s0)
                     new_segs.append(s0)
 
             log('new: {}'.format(new_segs))

@@ -63,34 +63,42 @@ def seg_h(seg):
     return np.arctan2(delta[1],delta[0])
 
 def seg_l(seg):
-    pa,pb = seg
+    pa, pb = seg
     delta = pb-pa
     return np.linalg.norm(delta)
 
 def seg_joinable(s0, s1,
         max_dh=0.17, # ~10 deg
         max_dl=0.05, # 5 cm
-        max_dr=0.05
+        max_dr=0.03
         ):
 
     h0 = seg_h(s0)
     h1 = seg_h(s1)
     dh = np.abs(U.adiff(h1,h0))
     if dh > max_dh:
+        print('violate h')
         return False
 
-    pa = np.min([s0,s1], axis=0)
-    pb = np.max([s0,s1], axis=0)
+    s0 = (s0 - s0[0].reshape([-1,2]) ).dot(U.R(-h0).T)
+    s1 = (s1 - s0[0].reshape([-1,2]) ).dot(U.R(-h0).T)
+    print('s0-s1', s0,s1)
+
+    pa = np.min(np.concatenate([s0,s1],axis=0), axis=0)
+    pb = np.max(np.concatenate([s0,s1],axis=0), axis=0)
 
     l0 = seg_l(s0)
     l1 = seg_l(s1)
     l2 = seg_l([pa,pb])
     dl = np.min([np.abs(l2-l0), np.abs(l2-l1)])
+    #dl = l2 - (l0 + l1)
     if dl > max_dl:
+        print('violate l : {}'.format(dl))
         return False
 
     dr = d_s2s(s0,s1)
     if dr > max_dr:
+        print('violate r')
         return False
 
     return True
