@@ -138,13 +138,15 @@ class PathMapper:
     def step_cb(self, _):
         if not self._init_flag:
             return EmptyResponse()
-        try:
-            self.mapper_(self._check_srv, self._map, self._fpt, log=rospy.loginfo, viz=True)
-            #monte_carlo_checker(self._check_srv,
-            #        self._map,self._fpt,
-            #        self._mw, self._mh, a=0)#np.pi/2)
-        except Exception as e:
-            rospy.logerr_throttle(1.0, 'Mapper Failed : {}'.format(e))
+        self.mapper_(self._check_srv, self._map, self._fpt, log=rospy.loginfo, viz=True)
+        #try:
+        #    self.mapper_(self._check_srv, self._map, self._fpt, log=rospy.loginfo, viz=True)
+        #    #monte_carlo_checker(self._check_srv,
+        #    #        self._map,self._fpt,
+        #    #        self._mw, self._mh, a=0)#np.pi/2)
+        #except Exception as e:
+        #    rospy.logerr_throttle(1.0, 'Mapper Failed : {}'.format(e))
+        #    raise e
         return EmptyResponse()
 
     def stop_cb(self, _):

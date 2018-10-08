@@ -26,7 +26,7 @@ def cast_ray(srv, p0, p1, a=0, min_d=0.005):
     resp = srv(p0p, p1p)
     if resp.valid:
         # open
-        return p1
+        return p1.copy()
     else:
         pm = np.add(p0, p1) / 2.0
         if np.linalg.norm(pm-p0) < min_d:

@@ -4,7 +4,7 @@ viz_enabled = True
 import numpy as np
 import utils as U
 from map_utils import cast_ray, fpt_hull
-from seg_utils import segment_intersect
+from seg_utils import segment_intersect, seg_joinable
 
 try:
     import cv2
@@ -58,13 +58,12 @@ class SkelMapper(object):
         wlim, hlim = self._wlim, self._hlim
 
         x, y = src
-        # TODO : check xy-segment orientation
-        if np.allclose(np.cos(ang), 1.0): # == along x
+        if np.allclose(np.cos(ang), 1.0): # == along y
             # fix y, x-directional segment
-            return [0, y], [wlim, y]
+            return np.float32([[x, -hlim], [x, hlim]])
         else:
             # fix x, y-directional segment
-            return [x, 0], [x, hlim]
+            return np.float32([[-wlim, y], [wlim, y]])
 
     def expand(self, srv, src, ang):
         """ find actual endpoints from source position and orientation.
@@ -76,8 +75,10 @@ class SkelMapper(object):
         """
         x,y = src
         p0, p1 = self.lim_dir(src, ang)
-        pm0 = cast_ray(srv, src, p0, a=U.anorm(ang+np.pi/2), min_d=0.005)
-        pm1 = cast_ray(srv, src, p1, a=U.anorm(ang+np.pi/2), min_d=0.005)
+        #print('src|p0-p1 : {}|{}-{}'.format(src,p0,p1))
+        pm0 = cast_ray(srv, src, p0, a=ang, min_d=0.005)
+        pm1 = cast_ray(srv, src, p1, a=ang, min_d=0.005)
+        #print('src|pm0-pm1 : {}|{}-{}'.format(src,pm0,pm1))
         return np.asarray([pm0, pm1], dtype=np.float32)
 
     def search(self, srv, seg, skip=None, pad=0.0, min_l=0.02, min_d=0.02):
@@ -123,8 +124,8 @@ class SkelMapper(object):
         #    srcs = np.concatenate( (srcs, [seg[1]]), axis=0)
         #    steps = np.concatenate( (srcs, 
 
-        si0 = None
-        s_ref = None
+        s_0 = None
+        s_1 = None
         si1 = None
         new_seg = None
 
@@ -139,37 +140,48 @@ class SkelMapper(object):
             # filter by length
             if l_seg > min_l:
                 # filter by previous seg.
-                if si0 is None:
-                    si0 = si 
-                    si1 = si 
-                    s_ref = new_seg
+                if s_0 is None:
+                    s_0 = new_seg
+                    s_1 = new_seg
+                    si1 = si
                 else:
-                    pa_c = np.linalg.norm(s_ref[0] - new_seg[0]) < min_d
-                    pb_c = np.linalg.norm(s_ref[1] - new_seg[1]) < min_d
-                    d_c  = np.abs(steps[si] - steps[si1]) < min_d
+                    if seg_joinable(new_seg, s_1):
+                    #pa_c = np.linalg.norm(s_1[0] - new_seg[0]) < min_d
+                    #pb_c = np.linalg.norm(s_1[1] - new_seg[1]) < min_d
+                    #d_c  = np.abs(steps[si] - steps[si1]) < min_d
 
-                    if (pa_c & pb_c & d_c):
+                    #if (pa_c & pb_c & d_c):
                         # matches with old segment
+                        s_1 = new_seg
                         si1 = si
-                        s_ref = new_seg
                     else:
-                        # save old sgement
-                        prv_seg = np.mean([srcs[si0], srcs[si1]], axis=0)
+                        # save old segment
+                        prv_seg = np.mean([s_0,s_1], axis=0)
                         segs.append(prv_seg)
                         # form new segment
-                        si0 = si
+                        s_0 = new_seg
+                        s_1 = new_seg
                         si1 = si
-                        s_ref = new_seg
 
-        if si0 == si1: # last new segment was not saved
+        if s_0 is not None and np.allclose(s_0 - s_1, 0):
+            # last new segment was not saved
             if new_seg is not None:
                 segs.append(new_seg)
 
         print('len(segs) : {}'.format(len(segs)))
         print('segs : {}'.format(segs))
 
-        #for seg in segs:
-        #    print('dst-d : {}'.format(seg_h(seg)))
+        l = len(segs)
+        mask = [False for _ in range(l)]
+        for i in range(l):
+            s0 = segs[i]
+            if mask[i]: continue
+            for j in range(i,l):
+                if mask[j]: continue
+                s1 = segs[j]
+                if seg_joinable(s0,s1):
+                    mask[j] = True
+        segs = [s for (m,s) in zip(mask,segs) if not m]
 
         return segs
 
@@ -241,7 +253,7 @@ class SkelMapper(object):
         suc, res = self.check_suc(seg_s[si0:si1], seg_g)
         if suc:
             si, gi = res
-            self.path_ = self.trace_path(s_tree_, g_tree_, si, gi)
+            self.path_ = self.trace_path(s_tree, g_tree, si, gi)
             self.done_ = True
             return
 
@@ -249,12 +261,34 @@ class SkelMapper(object):
 
         # search for new segments, branching from old ones
         for seg in seg_s[si0:si1]:
-            new_segs = self.search(srv, seg, skip=None, pad=0.0, min_l=0.02)
+            new_segs_raw = self.search(srv, seg, skip=None, pad=0.0, min_l=0.02)
+            len_new = len(new_segs_raw)
+
+            # filter by previously found segments
+            new_segs = []
+            for s0 in new_segs_raw:
+                for s1 in seg_s[:si0]:
+                    if seg_joinable(s0,s1):
+                        break
+                else:
+                    print('s0', s0)
+                    new_segs.append(s0)
+
             log('new: {}'.format(new_segs))
             seg_s.extend(new_segs) # in-place update
 
         for seg in seg_g[gi0:gi1]:
-            new_segs = self.search(srv, seg, skip=None, pad=0.0, min_l=0.02)
+            new_segs_raw = self.search(srv, seg, skip=None, pad=0.0, min_l=0.02)
+
+            # filter by previously found segments
+            new_segs = []
+            for s0 in new_segs_raw:
+                for s1 in seg_g[:si0]:
+                    if seg_joinable(s0,s1):
+                        break
+                else:
+                    new_segs.append(s0)
+
             seg_g.extend(new_segs) # in-place update
 
         # update segment indexing range
@@ -281,7 +315,6 @@ class SkelMapper(object):
                     trace = fpt_hull(fpt, seg[0], seg[1], a0=theta)
                     trace = U.xy2uv(trace, w, h, n, m)
                     cv2.drawContours(map, [trace.T], 0, color=255, thickness=-1)
-
 
     def done(self):
         return self.done_

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import numpy as np
+import utils as U
 
 def on_segment(p,q,r):
     px,py = p
@@ -41,6 +42,58 @@ def segment_intersect(s0, s1):
     if (o4 == 0 and on_segment(p2, q1, q2)): return True
 
     return False
+
+def d_s2p(seg,pt):
+    v = seg[1] - seg[0]
+    u = (pt - seg[0]).dot(v) / (v.dot(v))
+    u = np.clip(u,0,1)
+    c = seg[0] + u * v
+    return np.linalg.norm(c - pt)
+
+def d_s2s(s0,s1):
+    d00=d_s2p(s0,s1[0])
+    d01=d_s2p(s0,s1[1])
+    d10=d_s2p(s1,s0[0])
+    d11=d_s2p(s1,s0[1])
+    return np.min([d00,d01,d10,d11])
+
+def seg_h(seg):
+    pa,pb = seg
+    delta = pb-pa
+    return np.arctan2(delta[1],delta[0])
+
+def seg_l(seg):
+    pa,pb = seg
+    delta = pb-pa
+    return np.linalg.norm(delta)
+
+def seg_joinable(s0, s1,
+        max_dh=0.17, # ~10 deg
+        max_dl=0.05, # 5 cm
+        max_dr=0.05
+        ):
+
+    h0 = seg_h(s0)
+    h1 = seg_h(s1)
+    dh = np.abs(U.adiff(h1,h0))
+    if dh > max_dh:
+        return False
+
+    pa = np.min([s0,s1], axis=0)
+    pb = np.max([s0,s1], axis=0)
+
+    l0 = seg_l(s0)
+    l1 = seg_l(s1)
+    l2 = seg_l([pa,pb])
+    dl = np.min([np.abs(l2-l0), np.abs(l2-l1)])
+    if dl > max_dl:
+        return False
+
+    dr = d_s2s(s0,s1)
+    if dr > max_dr:
+        return False
+
+    return True
 
 def main():
     n_test = 10
