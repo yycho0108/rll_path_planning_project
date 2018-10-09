@@ -110,8 +110,8 @@ class PathMapper:
         self._map = np.zeros(shape=(n,m), dtype=np.uint8)
 
         # footprint params
-        self._fw = fw = float(rospy.get_param('~fw', default=0.02)) # footprint width
-        self._fh = fh = float(rospy.get_param('~fh', default=0.03)) # footprint height
+        self._fw = fw = float(rospy.get_param('~fw', default=0.06)) # footprint width
+        self._fh = fh = float(rospy.get_param('~fh', default=0.07)) # footprint height
         fpt = [[-fw/2,-fh/2],[-fw/2,fh/2],[fw/2,fh/2],[fw/2,-fh/2]] # 4x2
         self._fpt = np.asarray(fpt, dtype=np.float32).T #2x4
 
@@ -154,6 +154,10 @@ class PathMapper:
         return EmptyResponse()
 
     def move(self, req):
+        if len(self.mapper_.wpts_) <= 0:
+            rospy.loginfo("Waypoints not populated")
+            return False
+            
         check_srv = self._check_srv
         move_srv  = rospy.ServiceProxy('move', Move)
         d = np.diff(self.mapper_.wpts_, axis=0)
@@ -204,7 +208,7 @@ class PathMapper:
 
         while True:
             #rate.sleep()
-            #self.step_cb(None)
+            self.step_cb(None)
             cv2.imshow('map', self._map)
             k = cv2.waitKey(max(1, delay_t))
 

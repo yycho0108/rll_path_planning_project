@@ -37,8 +37,8 @@ class SkelMapper(object):
 
         # set all data fields to None
         self.done_ = False
-        self.path_ = None
-        self.wpts_ = None
+        self.path_ = []
+        self.wpts_ = []
         self.src_ = None
         self.dst_ = None
         self.seg_s_ = None
@@ -84,7 +84,7 @@ class SkelMapper(object):
         #print('src|pm0-pm1 : {}|{}-{}'.format(src,pm0,pm1))
         return np.asarray([pm0, pm1], dtype=np.float32)
 
-    def search(self, srv, seg, skip=None, pad=0.0, min_l=0.08, min_d=0.02):
+    def search(self, srv, seg, skip=None, pad=0.05, min_l=0.08, min_d=0.02):
         """ search along segment for orthogonal segments.
 
         Note:
@@ -101,6 +101,7 @@ class SkelMapper(object):
         Returns:
             segs(list): list of discovered segments
         """
+        # TODO : maybe min_l is why it fails?
         print('currently considering {}'.format(seg_str(seg)))
         segs = []
 
@@ -139,6 +140,7 @@ class SkelMapper(object):
             #    # skip source
             #    continue
             new_seg = self.expand(srv, src, ang)
+            # print(seg_str(new_seg))
 
             l_seg = np.linalg.norm(new_seg[1] - new_seg[0])
 
@@ -159,10 +161,8 @@ class SkelMapper(object):
                         s_0 = new_seg
                         s_1 = new_seg
 
-        if s_0 is not None and np.allclose(s_0 - s_1, 0):
-            # last new segment was not saved
-            if new_seg is not None:
-                segs.append(new_seg)
+        if s_1 is not None:
+            segs.append(s_1)
 
         print('len(segs) : {}'.format(len(segs)))
         print('segs : {}'.format(segs))
@@ -239,7 +239,8 @@ class SkelMapper(object):
         new_path = [src]
         prv = src
         for s0, s1 in zip(path[:-1], path[1:]):
-            wpt = s2s_ixt(s0,s1,as_pt=True)
+            # requires tolerance here since footprint is not a square.
+            wpt = s2s_ixt(s0,s1,as_pt=True,tol=3e-2)
             if wpt is None:
                 log("Path Reconstruction Failed : {}-{}".format(s0,s1))
                 return []
@@ -313,7 +314,7 @@ class SkelMapper(object):
         # search for new segments, branching from old ones
         for si in range(si0, si1):
             seg = seg_s[si]
-            new_segs_raw = self.search(srv, seg, skip=None, pad=0.0)
+            new_segs_raw = self.search(srv, seg, skip=None)
             len_new = len(new_segs_raw)
 
             # filter by previously found segments
@@ -334,7 +335,7 @@ class SkelMapper(object):
 
         for gi in range(gi0, gi1):
             seg = seg_g[gi]
-            new_segs_raw = self.search(srv, seg, skip=None, pad=0.0)
+            new_segs_raw = self.search(srv, seg, skip=None)
             len_new = len(new_segs_raw)
 
             # filter by previously found segments
