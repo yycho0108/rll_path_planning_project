@@ -4,7 +4,7 @@ viz_enabled = True
 import numpy as np
 import utils as U
 from map_utils import cast_ray, fpt_hull
-from seg_utils import segment_intersect, seg_joinable
+from seg_utils import segment_intersect, seg_join, seg_str, pt_str
 
 try:
     import cv2
@@ -81,7 +81,7 @@ class SkelMapper(object):
         #print('src|pm0-pm1 : {}|{}-{}'.format(src,pm0,pm1))
         return np.asarray([pm0, pm1], dtype=np.float32)
 
-    def search(self, srv, seg, skip=None, pad=0.0, min_l=0.02, min_d=0.02):
+    def search(self, srv, seg, skip=None, pad=0.0, min_l=0.08, min_d=0.02):
         """ search along segment for orthogonal segments.
 
         Note:
@@ -98,6 +98,7 @@ class SkelMapper(object):
         Returns:
             segs(list): list of discovered segments
         """
+        print('currently considering {}'.format(seg_str(seg)))
         segs = []
 
         d = seg[1] - seg[0]
@@ -106,10 +107,9 @@ class SkelMapper(object):
             # seg[1] == seg[0], single-point
             return []
         d /= l
-        print('src-d : {}'.format(d))
 
         # set search angle to be  perpendicular to source segment
-        ang = U.anorm(np.arctan2(d[1], d[0]) + np.pi/2)
+        ang = U.anorm(np.arctan2(d[1], d[0]))
 
         # define search steps from seg[0] to seg[1] with resolution _r
         steps = np.arange(-pad,l+pad,step=self._r).reshape(-1,1)
@@ -118,6 +118,9 @@ class SkelMapper(object):
         # seg[:1] = (1,2)
         # steps = (N,2)
         srcs = seg[:1] + diffs # = (N,2)
+
+        #for src in srcs:
+        #    print('src : {}'.format(pt_str(src)))
 
         #if not np.allclose(srcs[-1], seg[1]):
         #    # account for endpoints since they tend to be important
@@ -129,9 +132,9 @@ class SkelMapper(object):
         new_seg = None
 
         for src in srcs:
-            if (skip is not None) and np.allclose(src, skip):
-                # skip source
-                continue
+            #if (skip is not None) and np.allclose(src, skip):
+            #    # skip source
+            #    continue
             new_seg = self.expand(srv, src, ang)
 
             l_seg = np.linalg.norm(new_seg[1] - new_seg[0])
@@ -143,14 +146,11 @@ class SkelMapper(object):
                     s_0 = new_seg
                     s_1 = new_seg
                 else:
-                    if seg_joinable(s_1, new_seg):
-                        # matches with old segment
-                        s_1 = new_seg
+                    s_j = seg_join(s_1, new_seg)
+                    if s_j is not None:
+                        s_1 = s_j
                     else:
-                        # save old segment
-                        print('old : ' , s_1)
-                        print('new : ' , new_seg)
-                        prv_seg = np.mean([s_0,s_1], axis=0)
+                        prv_seg = s_1 #np.mean([s_0,s_1], axis=0)
                         segs.append(prv_seg)
                         # form new segment
                         s_0 = new_seg
@@ -166,17 +166,21 @@ class SkelMapper(object):
 
         l = len(segs)
         mask = [False for _ in range(l)]
+        new_segs = []
+
         for i in range(l):
             s0 = segs[i]
             if mask[i]: continue
-            for j in range(i,l):
+            mask[i] = True
+            for j in range(i+1,l):
                 if mask[j]: continue
                 s1 = segs[j]
-                if seg_joinable(s0,s1):
-                    mask[j] = True
-        segs = [s for (m,s) in zip(mask,segs) if not m]
-
-        return segs
+                s2 = seg_join(s0,s1)
+                if s2 is not None:
+                    s0 = s2
+                    mask[j] = True # j already used
+            new_segs.append(s0)
+        return new_segs
 
     @staticmethod
     def check_suc(seg0s, seg1s):
@@ -254,33 +258,35 @@ class SkelMapper(object):
 
         # search for new segments, branching from old ones
         for seg in seg_s[si0:si1]:
-            new_segs_raw = self.search(srv, seg, skip=None, pad=0.0, min_l=0.02)
+            new_segs_raw = self.search(srv, seg, skip=None, pad=0.0)
             len_new = len(new_segs_raw)
 
             # filter by previously found segments
             new_segs = []
             for s0 in new_segs_raw:
                 for s1 in seg_s[:si0]:
-                    if seg_joinable(s0,s1):
+                    if seg_join(s0,s1) is not None:
                         break
                 else:
                     new_segs.append(s0)
 
-            log('new: {}'.format(new_segs))
+            log('new_s: {}'.format(new_segs))
             seg_s.extend(new_segs) # in-place update
 
         for seg in seg_g[gi0:gi1]:
-            new_segs_raw = self.search(srv, seg, skip=None, pad=0.0, min_l=0.02)
+            new_segs_raw = self.search(srv, seg, skip=None, pad=0.0)
+            len_new = len(new_segs_raw)
 
             # filter by previously found segments
             new_segs = []
             for s0 in new_segs_raw:
                 for s1 in seg_g[:si0]:
-                    if seg_joinable(s0,s1):
+                    if seg_join(s0,s1) is not None:
                         break
                 else:
                     new_segs.append(s0)
 
+            log('new_g: {}'.format(new_segs))
             seg_g.extend(new_segs) # in-place update
 
         # update segment indexing range
@@ -300,18 +306,24 @@ class SkelMapper(object):
         if viz:
             w,h = self._w, self._h
             n,m = map.shape[:2]
+            i = 0
             for segs in [seg_s, seg_g]:
                 for seg in segs:
+                    i += 1
+                    print i
                     delta = (seg[1] - seg[0])
                     theta = np.arctan2(delta[1], delta[0])
                     trace = fpt_hull(fpt, seg[0], seg[1], a0=theta)
                     trace = U.xy2uv(trace, w, h, n, m)
                     cv2.drawContours(map, [trace.T], 0, color=255, thickness=-1)
+        print('done')
 
     def done(self):
         return self.done_
 
     def save(self, path='/tmp/skel_map.npy'):
+        print self.seg_s_
+        print self.seg_g_
         np.save(path, [self.path_, self.s_tree_, self.g_tree_])
 
 def main():

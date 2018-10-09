@@ -19,3 +19,6 @@ def anorm(x):
 
 def adiff(a,b):
     return anorm(a-b)
+
+def uvec(x):
+    return x / np.linalg.norm(x)

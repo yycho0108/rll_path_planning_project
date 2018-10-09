@@ -110,8 +110,8 @@ class PathMapper:
         self._map = np.zeros(shape=(n,m), dtype=np.uint8)
 
         # footprint params
-        self._fw = fw = float(rospy.get_param('~fw', default=0.06)) # footprint width
-        self._fh = fh = float(rospy.get_param('~fh', default=0.07)) # footprint height
+        self._fw = fw = float(rospy.get_param('~fw', default=0.02)) # footprint width
+        self._fh = fh = float(rospy.get_param('~fh', default=0.03)) # footprint height
         fpt = [[-fw/2,-fh/2],[-fw/2,fh/2],[fw/2,fh/2],[fw/2,-fh/2]] # 4x2
         self._fpt = np.asarray(fpt, dtype=np.float32).T #2x4
 
