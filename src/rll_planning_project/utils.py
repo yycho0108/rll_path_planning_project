@@ -1,4 +1,5 @@
 import numpy as np
+import time
 
 def xy2uv(xy, w, h, n, m):
     # convert from physical coordinates to map coordinates
@@ -22,3 +23,16 @@ def adiff(a,b):
 
 def uvec(x):
     return x / np.linalg.norm(x)
+
+class Benchmark(object):
+    """ from https://stackoverflow.com/a/41408510 """
+    def __init__(self, msg, fmt="%0.3g"):
+        self.msg = msg
+        self.fmt = fmt
+    def __enter__(self):
+        self.start = time.time()
+        return self
+    def __exit__(self, *args):
+        t = time.time() - self.start
+        print(("%s : " + self.fmt + " seconds") % (self.msg, t))
+        self.time = t

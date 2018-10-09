@@ -4,7 +4,7 @@ viz_enabled = True
 import numpy as np
 import utils as U
 from map_utils import cast_ray, fpt_hull
-from seg_utils import segment_intersect, seg_join, seg_str, pt_str
+from seg_utils import segment_intersect, seg_join, seg_str, pt_str, s2s_ixt
 
 try:
     import cv2
@@ -38,6 +38,9 @@ class SkelMapper(object):
         # set all data fields to None
         self.done_ = False
         self.path_ = None
+        self.wpts_ = None
+        self.src_ = None
+        self.dst_ = None
         self.seg_s_ = None
         self.seg_g_ = None
         self.s_tree_ = None
@@ -199,14 +202,53 @@ class SkelMapper(object):
         for i, seg0 in enumerate(seg0s):
             for j, seg1 in enumerate(seg1s):
                 if segment_intersect(seg0, seg1):
-                    return True, (i,j)
+                    return True, (i, j)
 
         return False, None
 
     @staticmethod
-    def trace_path(s_tree, g_tree, si, gi):
+    def trace_path(s_tree, g_tree, si, gi, seg_s, seg_g):
         # TODO : implement
-        raise NotImplementedError("Tree based Path Tracing not supported yet")
+
+        s_path = []
+        while not (si == 0): #backtracking
+            s_path.append(seg_s[si])
+            si = s_tree[si]
+        s_path.append(seg_s[si])
+        s_path = s_path[::-1] #reverse
+
+        g_path = []
+        while not (gi == 0): #backtracking
+            g_path.append(seg_g[gi])
+            gi = g_tree[gi]
+        g_path.append(seg_g[gi])
+        # no need to reverse the goal segment
+
+        s = seg_join(s_path[-1], g_path[0])
+
+        if seg_join(s_path[-1], g_path[0]) is not None:
+            # last src and first goal path are the same
+            # path = np.concatenate([s_path[:-1], [s], g_path[1:]], axis=0)
+            path = np.concatenate([s_path, g_path], axis=0)
+        else:
+            path = np.concatenate([s_path, g_path], axis=0)
+        return path
+
+    def refine_path(self, path, src, dst, log):
+        # mostly, trim path and produce waypoints
+        new_path = [src]
+        prv = src
+        for s0, s1 in zip(path[:-1], path[1:]):
+            wpt = s2s_ixt(s0,s1,as_pt=True)
+            if wpt is None:
+                log("Path Reconstruction Failed : {}-{}".format(s0,s1))
+                return []
+
+            # figure out orientation ...
+            new_path.append(wpt)
+        new_path.append(dst)
+
+        return np.asarray(new_path, dtype=np.float32)
 
     def reset(self, srv, src, dst):
         """ Initialize mapping.
@@ -221,10 +263,13 @@ class SkelMapper(object):
         x0, y0, h0 = src
         x1, y1, h1 = dst
 
+        self.src_ = [x0,y0]
+        self.dst_ = [x1,y1]
+
         self.seg_s_ = [self.expand(srv, [x0,y0], h0)]
         self.seg_g_ = [self.expand(srv, [x1,y1], h1)]
 
-        self.s_tree_ = {} # (i) -> [j,k,l], 
+        self.s_tree_ = {} # s_tree[child_idx] = parent_idx
         self.g_tree_ = {}
 
         self.si0_, self.si1_ = 0, 1
@@ -250,14 +295,24 @@ class SkelMapper(object):
         suc, res = self.check_suc(seg_s[si0:si1], seg_g)
         if suc:
             si, gi = res
-            self.path_ = self.trace_path(s_tree, g_tree, si, gi)
+            si += si0 # account for offset!!
+            log('Intersect indices : {},{}'.format(si, gi))
+            self.path_ = self.trace_path(
+                    s_tree, g_tree,
+                    si, gi,
+                    seg_s, seg_g
+                    )
+            self.wpts_ = self.refine_path(self.path_,
+                    self.src_, self.dst_, log)
             self.done_ = True
+            log("success!")
             return
 
         log('{}'.format(len(seg_s)))
 
         # search for new segments, branching from old ones
-        for seg in seg_s[si0:si1]:
+        for si in range(si0, si1):
+            seg = seg_s[si]
             new_segs_raw = self.search(srv, seg, skip=None, pad=0.0)
             len_new = len(new_segs_raw)
 
@@ -271,23 +326,32 @@ class SkelMapper(object):
                     new_segs.append(s0)
 
             log('new_s: {}'.format(new_segs))
+            i0 = len(seg_s)
             seg_s.extend(new_segs) # in-place update
+            i1 = len(seg_s)
+            for i in range(i0, i1):
+                s_tree[i] = si
 
-        for seg in seg_g[gi0:gi1]:
+        for gi in range(gi0, gi1):
+            seg = seg_g[gi]
             new_segs_raw = self.search(srv, seg, skip=None, pad=0.0)
             len_new = len(new_segs_raw)
 
             # filter by previously found segments
             new_segs = []
             for s0 in new_segs_raw:
-                for s1 in seg_g[:si0]:
+                for s1 in seg_g[:gi0]:
                     if seg_join(s0,s1) is not None:
                         break
                 else:
                     new_segs.append(s0)
 
             log('new_g: {}'.format(new_segs))
+            i0 = len(seg_g)
             seg_g.extend(new_segs) # in-place update
+            i1 = len(seg_g)
+            for i in range(i0, i1):
+                g_tree[i] = gi
 
         # update segment indexing range
         si0, gi0 = si1, gi1
@@ -316,7 +380,7 @@ class SkelMapper(object):
                     trace = fpt_hull(fpt, seg[0], seg[1], a0=theta)
                     trace = U.xy2uv(trace, w, h, n, m)
                     cv2.drawContours(map, [trace.T], 0, color=255, thickness=-1)
-        print('done')
+        print('step')
 
     def done(self):
         return self.done_
@@ -324,7 +388,7 @@ class SkelMapper(object):
     def save(self, path='/tmp/skel_map.npy'):
         print self.seg_s_
         print self.seg_g_
-        np.save(path, [self.path_, self.s_tree_, self.g_tree_])
+        np.save(path, [self.path_, self.wpts_, self.s_tree_, self.g_tree_, self.seg_s_, self.seg_g_])
 
 def main():
     mapper = SkelMapper(1.2,1.6,0.06,0.07,r=0.02)

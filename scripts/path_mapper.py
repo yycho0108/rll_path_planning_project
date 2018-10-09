@@ -153,6 +153,37 @@ class PathMapper:
         self._stop_flag = True
         return EmptyResponse()
 
+    def move(self, req):
+        check_srv = self._check_srv
+        move_srv  = rospy.ServiceProxy('move', Move)
+        d = np.diff(self.mapper_.wpts_, axis=0)
+        hs = U.anorm(np.arctan2(d[:,1], d[:,0]) + np.pi/2)
+
+        # ^ note the np.pi/2 above, to account for the fact that
+        # gripper angle should be "zero" for movement along y axis.
+        loc = req.start
+        for (p, h) in zip(self.mapper_.wpts_, hs):
+            pose = Pose2D(p[0],p[1],h)
+            cres = check_srv(loc, pose) # checking if the arm can move to the goal pose
+            if cres.valid:
+                mres = move_srv(pose)
+                rospy.loginfo('Move Response : {}'.format(mres))
+            else:
+                rospy.loginfo('Check Failed : {}'.format(cres))
+                return False
+            loc = pose
+
+        pose = req.goal
+        cres = check_srv(loc, pose)
+        if cres.valid:
+            mres = move_srv(pose)
+            rospy.loginfo('Move Response : {}'.format(mres))
+        else:
+            rospy.loginfo('Check Failed : {}'.format(cres))
+            return False
+
+        return True
+
     def execute(self, req):
         self._init_flag = True
         rate = rospy.Rate(self._rate)
@@ -160,7 +191,6 @@ class PathMapper:
         # Create Service handles
         self._stop_flag = False
         self._check_srv = rospy.ServiceProxy('check_path', CheckPath, persistent=True)
-        self._move_srv  = rospy.ServiceProxy('move', Move)
 
         delay_t = (1000 / self._rate) if (self._rate > 0) else 10
         delay_t = np.round(delay_t).astype(np.int32)
@@ -180,13 +210,14 @@ class PathMapper:
 
             cv_flag  = (k == 27)
             ros_flag = rospy.is_shutdown()
-            if cv_flag | ros_flag | self._stop_flag:
+            if cv_flag | ros_flag | self._stop_flag | self.mapper_.done_:
                 break
 
         # after everything is done, pretend to be path_planner.py
+        suc = False
         if not (cv_flag or ros_flag):
-            plan_to_goal(req)
-        self.server.set_succeeded()
+            suc = self.move(req)
+        self.server.set_succeeded(result=suc)
 
 if __name__ == '__main__':
     rospy.init_node('path_planner')

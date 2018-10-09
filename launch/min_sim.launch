@@ -3,5 +3,5 @@
     <!-- set sim time param -->
 
     <param name="/use_sim_time" value="true"/>
-    <node pkg="rll_planning_project" type="min_sim.py" name="min_sim" ns="$(arg robot)"/>
+    <node pkg="rll_planning_project" type="min_sim.py" name="min_sim" ns="$(arg robot)" output="screen"/>
 </launch>

@@ -43,6 +43,22 @@ def segment_intersect(s0, s1):
 
     return False
 
+def s2s_ixt(s0, s1, tol=1e-3, as_pt=False):
+    (a,b), (c,d) = s0, s1
+    A = np.transpose([b-a, c-d])
+    b = (c-a)
+    t = np.linalg.solve(A, b) #technically slow?
+    if np.all([(-tol)<t,t<(1+tol)]):
+        if as_pt:
+            return c + t[1]*(d-c)
+        else:
+            return True
+    else:
+        if as_pt:
+            return None
+        else:
+            return False
+
 def d_s2p(seg,pt):
     v = seg[1] - seg[0]
     u = (pt - seg[0]).dot(v) / (v.dot(v))
@@ -69,8 +85,8 @@ def seg_l(seg):
 
 def seg_join(s0, s1,
         max_dh=0.17, # ~10 deg
-        max_dr=0.08,
-        max_dl=0.05 # 5 cm
+        max_dr=0.05,
+        max_dl=0.03 # 5 cm
         ):
 
     h0 = seg_h(s0)
@@ -108,19 +124,31 @@ def seg_join(s0, s1,
 
 def ixtest():
     n_test = 10
-    np.random.seed(0)
     from matplotlib import pyplot as plt
     seg_1, seg_2 = np.random.uniform(size=(2,n_test,2,2))
+    
     for s1, s2 in zip(seg_1, seg_2):
         # test colinear cases
         # ds = (s1[1] - s1[0])
         # ds /= np.linalg.norm(ds)
         # s2 = np.mean(s1, axis=0, keepdims=True) + [2.0 * ds, 3.0 * ds]
-        ix = segment_intersect(s1,s2)
+
+        #with U.Benchmark("segment_intersect"):
+        #    for i in range(100):
+        #        ix = segment_intersect(s1,s2)
+        #with U.Benchmark("s2s_ixt"):
+        #    for i in range(100):
+        #        ix = s2s_ixt(s1,s2)
+
+        ix = s2s_ixt(s1,s2,as_pt=True)
         plt.clf()
         plt.plot(s1[:,0], s1[:,1], 'r-')
         plt.plot(s2[:,0], s2[:,1], 'b-')
-        plt.title('Intersection' if ix else 'No Intersection')
+        if ix is not None:
+            ix = np.reshape(ix, [-1,2])
+            print('ix', ix)
+            plt.plot(ix[:,0], ix[:,1], 'k.')
+        plt.title('Intersection' if (ix is not None) else 'No Intersection')
         plt.show()
 
 def ds2ptest():
@@ -199,6 +227,16 @@ def pstest():
             [[ 0.1376875 ,  0.55944854], [ 0.1376875 ,  0.73914796]],
             [[ 0.37768748, -0.5990091 ], [ 0.37768748,  0.73914796]],
             ]
+    segs =[[[-0.37200001,  0.21539062],
+        [-0.37200001,  0.5909375 ]],
+        [[-0.39925   ,  0.41539061],
+        [ 0.39459372,  0.41539061]],
+        [[ 0.22075   , -0.44739017],
+        [ 0.22075   ,  0.4500415 ]],
+        [[-0.39640623, -0.43250003],
+        [ 0.39640623, -0.43250003]],
+        [[ 0.        , -0.59250003],
+        [ 0.        , -0.41429687]]]
     #        [[ 0.        , -0.59250003], [ 0.        , -0.41429687]],
     #        [[-0.39640623, -0.59250003], [ 0.54390621, -0.59250003]],
     #        [[-0.39640623, -0.43250003], [ 0.39640623, -0.43250003]],
@@ -214,16 +252,10 @@ def pstest():
     plot_segments(segs)
 
 def main():
+    ixtest()
     #ds2ptest()
     #sjtest()
-    pstest()
+    #pstest()
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
