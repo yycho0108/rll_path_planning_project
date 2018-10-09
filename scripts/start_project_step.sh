@@ -8,7 +8,10 @@ case $1 in
         roslaunch rll_planning_project planning_iface.launch
         ;;
     3*)
-        roslaunch rll_planning_project path_planner.launch
+        # WARN : revert this to path_planner.launch when done with testing
+        # TODO : revert this to path_planner.launch when done with testing
+        #roslaunch rll_planning_project path_planner.launch
+        roslaunch rll_planning_project path_mapper.launch
         ;;
     4*)
         roslaunch rll_project_runner run_project.launch
